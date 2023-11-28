@@ -36,12 +36,12 @@
 
 
 ## Quick Start
-### Download dataset 
-##### DAIR-V2X
+#### Download dataset 
+##### 1. DAIR-V2X
 1. Download raw data of [DAIR-V2X.](https://thudair.baai.ac.cn/cooptest)
 2. Download complemented annotation from [Yifan Lu](https://github.com/yifanlu0227/CoAlign).
 
-### Install
+#### Install
 Please refer to the [INSTALL.md](./INSTALL.md) for detailed documentations. 
 
 
@@ -98,7 +98,7 @@ Thank for the dataset and code support by [DerrickXu](https://github.com/Derrick
 
 Thanks for the insightful previous works in cooperative perception field.
 
-**V2vnet: Vehicle-to-vehicle communication for joint perception and prediction** 
+**V2VNet: Vehicle-to-vehicle communication for joint perception and prediction** 
 *ECCV20* [[Paper]](https://arxiv.org/abs/2008.07519) 
 
 **When2com: Multi-agent perception via communication graph grouping** 
