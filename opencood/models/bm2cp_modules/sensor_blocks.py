@@ -114,6 +114,9 @@ class ImgCamEncode(nn.Module):
             # torch.count_nonzero(), tensor.numel()
             depth_map[ego_index] = depth_map[ego_index]*ego_depth_mask + maps_for_ego*(1-ego_depth_mask)
 
+            # update index
+            ego_index += next_ego_index
+
         x_img = x[:,:3:,:,:]    # origin x: (B*num(cav), C, H, W)
         features = self.get_eff_features(x_img)     # 8x downscale feature: (B*num(cav), set_channels(e.g.256), H/4, W/4)
         x_img = self.image_head(features) #  8x downscale feature: B*N x C x fH x fW(24 x 64 x 8 x 22). C is the channel for next stage (i.e. bev)
