@@ -461,23 +461,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             resized_src.append(img.resize((reW, reH)))
         img_src = resized_src
 
-        #=====================================
-        """
-        lidar_pose = selected_cav_base['params']['lidar_pose']
-        print('camera_to_lidar_matrix: ', camera_to_lidar_matrix)
-        print(lidar_pose)
-        lidar_pose = np.array(lidar_pose)[np.newaxis,...]
-        lidar_pose_tfm = transformation_utils.pose_to_tfm(lidar_pose)
-        camera_pose_tfm = lidar_pose_tfm*np.linalg.inv(camera_to_lidar_matrix)
-        camera_pose = transformation_utils.tfm_to_pose(camera_pose_tfm[0])
-        print(camera_pose)
-        print('image shape: ', imgH, imgW)
-        plt.imshow(np.array(resized_src[0]))
-        plt.savefig('./image.png')
-        plt.close()
-        """
-        #=====================================
-
         # decouple RGB and Depth
         img_src[0] = camera_utils.normalize_img(img_src[0])
         if self.use_gt_depth:
@@ -497,8 +480,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 "post_trans": post_tran.unsqueeze(0),
             }
         }
-        #group = selected_cav_processed['image_inputs']
-        #print(group['imgs'].shape, group['intrins'].shape, group['rots'].shape, group['trans'].shape, group['post_rots'].shape, group['post_trans'].shape)
 
         # process lidar data
 
@@ -549,21 +530,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         
         # ============================================================================================================
         selected_cav_processed["image_inputs"].update({"depth_map": depth_map})
-
-        # ============================================================================================================
-        """
-        plt.imshow(selected_cav_processed["image_inputs"]["depth_map"][0].numpy().transpose(1,2,0))
-        plt.savefig('./depth.png')
-        plt.close()
-        
-        canvas = canvas_3d.Canvas_3D(canvas_shape=(imgH, imgW), left_hand=False)
-        canvas_xy, valid_mask = canvas.get_canvas_coords(lidar_np)
-        canvas.draw_canvas_points(canvas_xy[valid_mask])
-        plt.imshow(canvas.canvas)
-        plt.savefig('./canvas.png', transparent=False, dpi=400)
-        plt.close()
-        """
-        # ============================================================================================================
 
         # update dictionary
         selected_cav_processed.update(
