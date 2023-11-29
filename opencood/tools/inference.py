@@ -83,7 +83,7 @@ def main():
 
     print('Loading Model from checkpoint')
     saved_path = opt.model_dir
-    epoch_id, model = train_utils.load_model(saved_path, model, opt.eval_epoch, start_from_best=opt.eval_best_epoch)
+    epoch_id, model = train_utils.load_saved_model(saved_path, model, opt.eval_epoch)
         
     model.zero_grad()
     model.eval()
