@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Author: Runsheng Xu <rxx3386@ucla.edu>, Yue Hu <18671129361@sjtu.edu.cn>
+# Author: Runsheng Xu <rxx3386@ucla.edu>, Yue Hu <18671129361@sjtu.edu.cn>, Binyu Zhao <byzhao@stu.hit.edu.cn>
 # License: TDG-Attribution-NonCommercial-NoDistrib
 
 
@@ -99,7 +99,6 @@ def main():
     # record lowest validation loss checkpoint.
     lowest_val_loss = 1e5
     lowest_val_epoch = -1
-    best_saved_path = os.path.join(saved_path, 'net_epoch_bestval.pth')
 
     # record training
     writer = SummaryWriter(saved_path)
@@ -214,6 +213,7 @@ def main():
             # lowest val loss
             if valid_ave_loss < lowest_val_loss:
                 lowest_val_loss = valid_ave_loss
+                best_saved_path = os.path.join(saved_path, 'net_epoch_bestval_at{}.pth'.format(epoch+1))
                 torch.save(model.state_dict(), best_saved_path)
 
 

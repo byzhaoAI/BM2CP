@@ -83,7 +83,7 @@ def main():
 
     print('Loading Model from checkpoint')
     saved_path = opt.model_dir
-    epoch_id, model = train_utils.load_saved_model(saved_path, model, opt.eval_epoch)
+    epoch_id, model = train_utils.load_model(saved_path, model, opt.eval_epoch, start_from_best=opt.eval_best_epoch)
         
     model.zero_grad()
     model.eval()
@@ -153,7 +153,7 @@ def main():
                     os.makedirs(vis_save_path)
                 vis_save_path = os.path.join(opt.model_dir, 'vis_bev/bev_%05d.png' % i)
                 simple_vis.visualize(pred_box_tensor, gt_box_tensor, batch_data['ego']['origin_lidar'][0], hypes['postprocess']['gt_range'], 
-                                     vis_save_path, method='bev', left_hand=left_hand, vis_pred_box=True)            
+                                     vis_save_path, method='bev', left_hand=left_hand, vis_pred_box=True)
 
     if len(total_comm_rates) > 0:
         comm_rates = (sum(total_comm_rates)/len(total_comm_rates))
