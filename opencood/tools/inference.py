@@ -40,7 +40,7 @@ def test_parser():
     parser.add_argument('--save_npy', action='store_true',
                         help='whether to save prediction and gt result'
                              'in npy file')
-    parser.add_argument('--eval_epoch', type=str, default=None,
+    parser.add_argument('--eval_epoch', type=int, default=None,
                         help='Set the checkpoint')
     parser.add_argument('--eval_best_epoch', type=bool, default=False,
                         help='Set the checkpoint')

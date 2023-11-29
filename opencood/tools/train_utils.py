@@ -127,14 +127,19 @@ def load_model(saved_path, model, epoch=None, start_from_best=True):
             epochs_exist = []
             for file_ in file_list:
                 result = re.findall(".*epoch(.*).pth.*", file_)
-                epochs_exist.append(int(result[0]))
+                try:
+                    _epoch = int(result[0])
+                except Exception as e:
+                    pass
+                else:
+                    epochs_exist.append(_epoch)
             initial_epoch_ = max(epochs_exist)
         else:
             initial_epoch_ = 0
         return initial_epoch_
 
     if epoch is not None:
-        initial_epoch = findLastCheckpoint(saved_path)
+        initial_epoch = epoch
     else:
         if start_from_best:
             file_list = glob.glob(os.path.join(saved_path, 'net_epoch_bestval_at*.pth'))
