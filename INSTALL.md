@@ -42,7 +42,14 @@ source ~/.bashrc
 conda activate bm2cp
 ```
 
-### 3. Install spconv v1.2.1
+### 3. Install spconv (Support both 1.2.1 and 2.x)
+
+##### *(Notice): Make sure *libboost-all-dev* is installed in your linux system before installing *spconv*. If not:
+```
+sudo apt-get install libboost-all-dev
+```
+
+##### Install v1.2.1
 ```
 # clone spconv:
 git clone https://github.com/traveller59/spconv.git 
@@ -61,9 +68,11 @@ pip install spconv-1.2.1-cp37-cp37m-linux_x86_64.whl
 python 
 import spconv
 ```
-##### *(Notice): Make sure *libboost-all-dev* is installed in your linux system before installing *spconv*. If not:
+
+
+##### Install 2.x
 ```
-sudo apt-get install libboost-all-dev
+pip install spconv-cu113
 ```
 
 ### 4. Install pypcd
