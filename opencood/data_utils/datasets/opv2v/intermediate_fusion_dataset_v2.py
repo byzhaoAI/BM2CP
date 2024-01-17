@@ -15,7 +15,7 @@ import torch
 import opencood.data_utils.datasets
 import opencood.data_utils.post_processor as post_processor
 from opencood.utils import box_utils
-from opencood.data_utils.datasets import basedataset
+from opencood.data_utils.datasets.opv2v import basedataset
 from opencood.data_utils.pre_processor import build_preprocessor
 from opencood.utils.pcd_utils import \
     mask_points_by_range, mask_ego_points, shuffle_points

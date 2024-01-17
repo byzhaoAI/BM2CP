@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 import opencood.data_utils.datasets
 from opencood.data_utils.post_processor import build_postprocessor
-from opencood.data_utils.datasets import basedataset
+from opencood.data_utils.datasets.opv2v import basedataset
 from opencood.data_utils.pre_processor import build_preprocessor
 from opencood.hypes_yaml.yaml_utils import load_yaml
 from opencood.utils import box_utils
