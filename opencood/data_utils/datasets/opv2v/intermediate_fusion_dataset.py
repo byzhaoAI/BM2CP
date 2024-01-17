@@ -41,7 +41,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # if project first, cav's lidar will first be projected to
         # the ego's coordinate frame. otherwise, the feature will be
         # projected instead.
-        self.proj_first = True
+        self.proj_first = False
         if 'proj_first' in params['fusion']['args'] and \
             not params['fusion']['args']['proj_first']:
             self.proj_first = False

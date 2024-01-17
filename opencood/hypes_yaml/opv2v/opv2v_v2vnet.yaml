@@ -13,7 +13,7 @@ train_params:
 fusion:
   core_method: 'IntermediateFusionDatasetOPV2V' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args:
-    proj_first: true
+    proj_first: false
 
 # preprocess-related
 preprocess:
