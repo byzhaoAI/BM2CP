@@ -6,6 +6,33 @@ import cv2
 import math
 from shapely.geometry import MultiPoint
 
+
+def scale_intrinsics(K, sx, sy):
+    # split_intrinsics, K is B x 3 x 3 or B x 4 x 4
+    fx = K[:,0,0]
+    fy = K[:,1,1]
+    x0 = K[:,0,2]
+    y0 = K[:,1,2]
+
+    # scale
+    fx = fx*sx
+    fy = fy*sy
+    x0 = x0*sx
+    y0 = y0*sy
+
+    # merge_intrinsics
+    B = list(fx.shape)[0]
+    K = torch.zeros(B, 4, 4, dtype=torch.float32, device=fx.device)
+    K[:,0,0] = fx
+    K[:,1,1] = fy
+    K[:,0,2] = x0
+    K[:,1,2] = y0
+    K[:,2,2] = 1.0
+    K[:,3,3] = 1.0
+
+    return K
+
+
 def load_camera_data(camera_files, preload=True):
     """
     Args:

@@ -461,23 +461,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             resized_src.append(img.resize((reW, reH)))
         img_src = resized_src
 
-        #=====================================
-        """
-        lidar_pose = selected_cav_base['params']['lidar_pose']
-        print('camera_to_lidar_matrix: ', camera_to_lidar_matrix)
-        print(lidar_pose)
-        lidar_pose = np.array(lidar_pose)[np.newaxis,...]
-        lidar_pose_tfm = transformation_utils.pose_to_tfm(lidar_pose)
-        camera_pose_tfm = lidar_pose_tfm*np.linalg.inv(camera_to_lidar_matrix)
-        camera_pose = transformation_utils.tfm_to_pose(camera_pose_tfm[0])
-        print(camera_pose)
-        print('image shape: ', imgH, imgW)
-        plt.imshow(np.array(resized_src[0]))
-        plt.savefig('./image.png')
-        plt.close()
-        """
-        #=====================================
-
         # decouple RGB and Depth
         img_src[0] = camera_utils.normalize_img(img_src[0])
         if self.use_gt_depth:
@@ -537,14 +520,14 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         xyz, int_matrix, ext_matrix = lidar_np[:,:3], camera_intrinsic, camera_to_lidar_matrix
         #if self.left_hand:  # left_hand = True if "OPV2V" in hypes['test_dir'] else False
         #    xyz[:,1] = - xyz[:,1]
-        depth_map = self.generate_depth_map(xyz, int_matrix, ext_matrix, imgH, imgW, draws=False)
+        depth_map = self.generate_depth_map(resized_src[0], xyz, int_matrix, ext_matrix, imgH, imgW, draws=False)
         # ============================================================================================================
         # create depth map for ego
         
         xyz_for_ego = projected_lidar[:,:3]
         int_matrix_for_ego = np.array(ego_cav_base['params']["camera_intrinsic"]).reshape(3,3).astype(np.float32)
         ext_matrix_for_ego = np.array(ego_cav_base['params']['camera2lidar_matrix']).astype(np.float32)
-        depth_map_for_ego = self.generate_depth_map(xyz_for_ego, int_matrix_for_ego, ext_matrix_for_ego, imgH, imgW, draws=False)
+        depth_map_for_ego = self.generate_depth_map(resized_src[0], xyz_for_ego, int_matrix_for_ego, ext_matrix_for_ego, imgH, imgW, draws=False)
         depth_map = torch.cat([depth_map.unsqueeze(0), depth_map_for_ego.unsqueeze(0)], dim=0)  # torch.Size([2, 1, 360, 480])
         
         # ============================================================================================================
@@ -589,29 +572,32 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
         return selected_cav_processed
 
-    def generate_depth_map(self, xyz, int_matrix, ext_matrix, imgH, imgW, draws=True):
+    def generate_depth_map(self, image, xyz, int_matrix, ext_matrix, imgH, imgW, draws=True):
         xyz_hom = np.concatenate([xyz, np.ones((xyz.shape[0], 1), dtype=np.float32)], axis=1)   # (..., 3) -> (..., 4)[xyz+1]
         
         if draws:
             print('xyz maxmin: ', xyz_hom.max(axis=0), xyz_hom.min(axis=0))
+
+            plt.imshow(np.transpose(image, (1,2,0)))
+            plt.savefig('image.png')
+            plt.close()
             
             canvas = canvas_3d.Canvas_3D(canvas_shape=(imgH, imgW), left_hand=False)
             canvas_xy, valid_mask = canvas.get_canvas_coords(xyz_hom)
             canvas.draw_canvas_points(canvas_xy[valid_mask])
             plt.imshow(canvas.canvas)
-            plt.savefig('./canvas.png', transparent=False, dpi=400)
+            plt.savefig('canvas_3d.png', transparent=False, dpi=400)
             plt.close()
             
             camera_pts = (np.linalg.inv(ext_matrix)[:3,:4] @ xyz_hom.T).transpose(1,0)
             camera_pts[:,1] = -camera_pts[:,1]
-            canvas = canvas_3d.Canvas_3D(canvas_shape=(3000,3000), left_hand=False)
+            canvas = canvas_3d.Canvas_3D(canvas_shape=(3000, 3000), left_hand=False)
             canvas_xy, valid_mask = canvas.get_canvas_coords(camera_pts)
             canvas.draw_canvas_points(canvas_xy[valid_mask])
-            plt.imshow(canvas.canvas)
-            plt.savefig('./canvas_cameraview.png', transparent=False, dpi=400)
+            plt.imshow(np.transpose(canvas.canvas, (1,0,2)))
+            plt.savefig('canvas_cameraview.png', transparent=False, dpi=400)
             plt.close()
             
-        
         ext_matrix = np.linalg.inv(ext_matrix)[:3,:4]
         img_pts = (int_matrix @ ext_matrix @ xyz_hom.T).T
 
@@ -650,9 +636,8 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
         if draws:
             plt.imshow(depth_map.numpy().transpose(1,2,0))
-            plt.savefig('./depth.png')
+            plt.savefig('depth.png')
             plt.close()
-
         return depth_map
 
     def get_unique_label(self, object_stack, object_id_stack):

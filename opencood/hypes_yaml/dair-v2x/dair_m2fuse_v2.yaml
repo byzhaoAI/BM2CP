@@ -1,8 +1,8 @@
 name: dair_m2fuse_v2
-data_dir: "data/DAIR-V2X/cooperative-vehicle-infrastructure"
-root_dir: "data/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-validate_dir: "data/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-test_dir: "data/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+data_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
+root_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+validate_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+test_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 
 yaml_parser: "load_cross_modal_point_pillar_params"
 train_params:
@@ -25,7 +25,7 @@ noise_setting:
     rot_mean: 0
 
 fusion:
-  core_method: 'LiDARCameraIntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset(V2X) supported. 
+  core_method: 'LiDARCameraIntermediateFusionDatasetDAIRV2' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset(V2X) supported. 
   args: 
     proj_first: &proj_first false
     clip_pc: false
@@ -117,18 +117,18 @@ model:
         num_filters: [64]
       point_pillar_scatter:
         num_features: &num_features 64
-
+    
     # params for camera branch
     img_params:
-      img_size: *image_size
       grid_conf: *grid_conf
       data_aug_conf: *data_aug_conf
-      chain_channels: &chain_channels 256
       img_downsample: 8
       bev_dim: 64
-      max_cav: *max_cav
       use_depth_gt: false
       depth_supervision: false #true
+      img_size: *image_size
+      chain_channels: &chain_channels 256
+      max_cav: *max_cav
       grid_att:
         dim: *num_features
         dim_head: 32

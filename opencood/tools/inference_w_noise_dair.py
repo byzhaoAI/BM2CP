@@ -30,6 +30,10 @@ def test_parser():
     parser.add_argument('--fusion_method', type=str,
                         default='intermediate',
                         help='no, no_w_uncertainty, late, late_w_ba, early or intermediate')
+    parser.add_argument('--eval_epoch', type=int, default=None,
+                        help='Set the checkpoint')  
+    parser.add_argument('--eval_best_epoch', type=bool, default=False,
+                        help='Set the checkpoint')                  
     parser.add_argument('--save_vis_interval', type=int, default=5,
                         help='save how many numbers of visualization result?')
     parser.add_argument('--save_npy', action='store_true',
@@ -64,7 +68,10 @@ def main():
 
     print('Loading Model from checkpoint')
     saved_path = opt.model_dir
-    _, model = train_utils.load_saved_model(saved_path, model)
+    # _, model = train_utils.load_saved_model(saved_path, model)
+    _, model = train_utils.load_model(saved_path, model, opt.eval_epoch, start_from_best=opt.eval_best_epoch)
+    
+    model.zero_grad()
     model.eval()
 
     # add noise to pose.
@@ -116,7 +123,7 @@ def main():
                         0.5: {'tp': [], 'fp': [], 'gt': 0},
                         0.7: {'tp': [], 'fp': [], 'gt': 0}}
             
-            noise_level = f"{pos_std}_{rot_std}_{pos_mean}_{rot_mean}_" + +opt.fusion_method + suffix + opt.note
+            noise_level = f"{pos_std}_{rot_std}_{pos_mean}_{rot_mean}_" + opt.fusion_method + suffix + opt.note
 
 
             for i, batch_data in enumerate(data_loader):
@@ -154,10 +161,13 @@ def main():
                     else:
                         raise NotImplementedError('Only single, no, no_w_uncertainty, early, late and intermediate'
                                                 'fusion is supported.')
-
+                    
+                    """
                     pred_box_tensor = infer_result['pred_box_tensor']
                     gt_box_tensor = infer_result['gt_box_tensor']
                     pred_score = infer_result['pred_score']
+                    """
+                    pred_box_tensor, pred_score, gt_box_tensor = infer_result
 
                     if "uncertainty_tensor" in infer_result:
                         uncertainty_tensor = infer_result['uncertainty_tensor']

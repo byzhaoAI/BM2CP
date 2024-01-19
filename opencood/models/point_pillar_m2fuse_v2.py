@@ -16,7 +16,9 @@ from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone as 
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
 
+from opencood.utils import camera_utils
 from opencood.utils.camera_utils import gen_dx_bx, cumsum_trick, QuickCumsum, depth_discretization
+from opencood.models.m2fuse_v2_modules import cam_unproj
 
 from opencood.models.where2comm_modules.base_bev_backbone_resnet import ResNetBEVBackbone
 from opencood.models.m2fuse_v2_modules.attentioncomm import ScaledDotProductAttention, AttenComm
@@ -333,6 +335,7 @@ class PointPillarM2FuseV2(nn.Module):
         # decode head
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
+        
         # update output dict
         output_dict = {'psm': psm, 'rm': rm}
 
@@ -371,6 +374,53 @@ class PointPillarM2FuseV2(nn.Module):
         
         return output_dict
 
+    def image_encoding(self, images, features, intrins, extrins):
+        B, S, C, H, W = images.shape
+        # features = self.camencode(images, )  # torch.Size([B*S, 128, 28, 50])
+        B, S, C, Hf, Wf = features.shape
+        features = features.view(-1, C, Hf, Wf)
+        intrins = intrins.view(-1, 3, 3)
+        extrins = extrins.view(-1, 4, 4)
+
+        sy = Hf/float(H)
+        sx = Wf/float(W)
+        X, Y, Z = self.nx
+        bounds = (-int(self.nx[0]/2), int(self.nx[0]/2),
+                  -int(self.nx[1]/2), int(self.nx[1]/2),
+                  -int(self.nx[2]/2), int(self.nx[2]/2))
+
+        # unproject image feature to 3d grid
+
+        # process intrinsic matrix first
+        feat_intrins = camera_utils.scale_intrinsics(intrins, sx, sy)  # torch.Size([B*S, 4, 4])
+
+        # the scene centroid is defined wrt a reference camera, which is usually random
+        grid_voxel = cam_unproj.gridcloud3d(1, Z, Y, X, norm=False)
+        xyz_camA = cam_unproj.Mem2Ref(grid_voxel, bounds, self.dx, Z, Y, X, assert_cube=False)
+        xyz_camA = xyz_camA.to(features.device).repeat(B*S,1,1)
+        # xyz_camA = torch.Size([B*S, 320000, 3])
+
+        feat_voxel = cam_unproj.unproject_image_to_mem(features, torch.matmul(feat_intrins, extrins), extrins, Z, Y, X, xyz_camA=xyz_camA)          
+        print(feat_voxel.shape)
+        # torch.Size([B*S, 128, 200, 8, 200])
+        feat_voxel = feat_voxel.view(B, S, C, Z, Y, X) # -> B, S, C, Z, Y, X
+        
+        # reduce_masked_mean:
+        #       feat_voxel and mask_voxel are the same shape, or at least broadcastably so < actually it's safer if you disallow broadcasting
+        #       returns shape-1 axis can be a list of axes
+        mask_voxel = (torch.abs(feat_voxel) > 0).float()
+        assert feat_voxel.shape == mask_voxel.shape
+
+        # while dim = None
+        # numer = torch.sum(feat_voxel * mask_voxel)
+        # denom = torch.sum(mask_voxel) + 1e-6
+        
+        # dim=1
+        numer = torch.sum(feat_voxel * mask_voxel, dim=1, keepdim=False)
+        denom = torch.sum(mask_voxel, dim=1, keepdim=False) + 1e-6
+
+        return numer/denom  # B, C, Z, Y, X. 在S维度加和求平均了，个人理解为多张camera的feature融合了
+
     #def get_geometry(self, rots, trans, intrins, post_rots, post_trans):
     def get_geometry(self, image_inputs_dict):
         """Determine the (x,y,z) locations (in the ego frame)
@@ -378,7 +428,7 @@ class PointPillarM2FuseV2(nn.Module):
         Returns B x N x D x H/downsample x W/downsample x 3
         """
                 # process image to get bev
-        rots, trans, intrins, post_rots, post_trans = image_inputs_dict['rots'], image_inputs_dict['trans'], image_inputs_dict['intrins'], image_inputs_dict['post_rots'], image_inputs_dict['post_trans']
+        rots, trans, extrins, intrins, post_rots, post_trans = image_inputs_dict['rots'], image_inputs_dict['trans'], image_inputs_dict['extrins'], image_inputs_dict['intrins'], image_inputs_dict['post_rots'], image_inputs_dict['post_trans']
 
         B, N, _ = trans.shape  # B:4(batchsize)    N: 4(相机数目) DAIR数据集只有1个相机
 

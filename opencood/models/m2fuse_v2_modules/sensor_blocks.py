@@ -7,7 +7,7 @@ from efficientnet_pytorch import EfficientNet
 from torchvision.models.resnet import resnet18
 import torch.nn.functional as F
 from opencood.utils.camera_utils import bin_depths
-from opencood.models.m2fuse_v2_modules.grid_attention import GridAttEncoder
+from opencood.models.m2fuse_v2_modules.grid_attention0 import GridAttEncoder
 from opencood.models.m2fuse_v2_modules.attentioncomm import ScaledDotProductAttention, AttenComm
 
 
@@ -63,7 +63,10 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
 
         assert isinstance(img_size, list) and len(img_size) == 2
         assert img_size[0] % downsample == 0 and img_size[1] % downsample == 0, f'{img_size[0] % downsample},{img_size[1] % downsample}'
-        self.resize_att = GridAttEncoder(att_args)
+        
+        # self.resize_att = GridAttEncoder(att_args)
+        self.resize_conv = nn.Conv3d(C, C, kernel_size=(1,3,3), stride=2 if downsample > 1 else 1, padding=1)
+        self.resize_act = nn.ReLU()
         self.resizer = nn.AdaptiveAvgPool3d([1, img_size[0]//downsample, img_size[1]//downsample])
 
         if not use_gt_depth:
@@ -71,6 +74,7 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
             self.proj = nn.Linear(self.chain_channels, self.D)
             self.act = nn.Sigmoid()
             # self.depth_head = nn.Conv2d(self.chain_channels, self.D, kernel_size=1, padding=0)  # 1x1卷积，变换维度
+        
         self.image_head = nn.Conv2d(self.chain_channels, self.C, kernel_size=1, padding=0)
 
     def get_eff_features(self, x):  # 使用efficientnet提取特征
@@ -111,7 +115,7 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
         
         # cum_sum_len = torch.cumsum(record_len, dim=0)
 
-        x_imgs = x[:,:3,:,:]    # origin x: (N(cav), N(cam), C, H, W)
+        x_imgs = x[:,:3,:,:]    # origin x: (N(cav)*N(cam), C, H, W)
         features = self.get_eff_features(x_imgs)     # 8x downscale feature: (B*num(cav), set_channels(e.g.256), H/8, W/8)
         x_imgs = self.image_head(features) #  8x downscale feature: B*N x C x fH x fW(24 x 64 x 8 x 22). C is the channel for next stage (i.e. bev)
 
@@ -132,16 +136,17 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
             pc_voxel = pc_voxels[batch_index: batch_index+record_len[idx],:,:,:,:]
 
             # generate mask
-            padding_len = self.max_cav - record_len[idx]
-            mask = [1] * feature.shape[0] + [0] * padding_len
-            mask = torch.from_numpy(np.array(mask)).to(feature.device).unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
-            mask = repeat(mask, 'b l c h w -> b l c (h new_h) (w new_w)', new_h=pc_voxel.shape[3], new_w=pc_voxel.shape[4])
+            # padding_len = self.max_cav - record_len[idx]
+            # mask = [1] * feature.shape[0] + [0] * padding_len
+            # mask = torch.from_numpy(np.array(mask)).to(feature.device).unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+            # mask = repeat(mask, 'b l c h w -> b l c (h new_h) (w new_w)', new_h=pc_voxel.shape[3], new_w=pc_voxel.shape[4])
 
             # (4, 1, 256, 45, 60)
-            pc_voxel = self.resizer(self.resize_att(pc_voxel, mask))
+            # pc_voxel = self.resizer(self.resize_att(pc_voxel, mask))
+            pc_voxel = self.resizer(self.resize_act(self.resize_conv(pc_voxel)))
 
             feature = rearrange(feature, 'n l c h w -> (n l) c (h w)')
-            pc_voxel = rearrange(pc_voxel, 'n c z y x -> n (c z) (y x)')
+            pc_voxel = rearrange(pc_voxel, 'n c z y x -> n (c z) (y x)').repeat(N,1,1)
             feature = self.att(feature, pc_voxel, pc_voxel)
             feature = self.act(self.proj(feature.permute(0,2,1)))
             depth_score.append(rearrange(feature, 'n (h w) c -> n c h w', h=h, w=w))

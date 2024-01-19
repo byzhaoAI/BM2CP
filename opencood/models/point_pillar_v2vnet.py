@@ -110,6 +110,7 @@ class PointPillarV2VNet(nn.Module):
 
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
+        print(psm.shape, rm.shape)
 
         output_dict = {'psm': psm,
                        'rm': rm}

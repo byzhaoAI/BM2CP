@@ -182,6 +182,9 @@ class AttenComm(nn.Module):
                     level_thres_map = F.interpolate(thres_map, size=x.shape[2:], mode='bilinear')
                 else:
                     level_thres_map = thres_map
+                
+                if x.shape != rm.shape:
+                    rm = F.interpolate(rm, size=x.shape[2:], mode='bilinear')
 
                 if i==0:
                     batch_confidence_maps = self.regroup(rm, record_len)
