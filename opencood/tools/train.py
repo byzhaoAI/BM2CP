@@ -47,18 +47,20 @@ def main():
 
     train_loader = DataLoader(opencood_train_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=0,
+                            num_workers=1,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
-                            drop_last=True)
+                            drop_last=True,
+                            prefetch_factor=2)
     val_loader = DataLoader(opencood_validate_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=0,
+                            num_workers=1,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
-                            drop_last=True)
+                            drop_last=True,
+                            prefetch_factor=2)
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
@@ -216,6 +218,7 @@ def main():
                 best_saved_path = os.path.join(saved_path, 'net_epoch_bestval_at{}.pth'.format(epoch+1))
                 torch.save(model.state_dict(), best_saved_path)
 
+            torch.cuda.empty_cache()
 
         scheduler.step(epoch)
 
