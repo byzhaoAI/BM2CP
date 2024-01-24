@@ -67,12 +67,10 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # configs in yaml file about project first, knowledge distillation
         #       if project first, cav's lidar will first be projected to the ego's coordinate frame. otherwise, the feature will be projected instead.
         #       if clip_pc, then clips the lower bound of x-coordinate in point cloud data to 0
-        assert 'proj_first' in params['fusion']['args']
-        assert 'clip_pc' in params['fusion']['args']
 
-        self.proj_first = True if params['fusion']['args']['proj_first'] else False
+        self.proj_first = params['fusion']['args']['proj_first'] if 'proj_first' in params['fusion']['args'] else False
         self.kd_flag = params['kd_flag'] if "kd_flag" in params.keys() else False
-        self.clip_pc = True if params['fusion']['args']['clip_pc'] else False
+        self.clip_pc = params['fusion']['args']['clip_pc'] if 'clip_pc' in params['fusion']['args'] else False
         # self.select_keypoint = params['select_kp'] if 'select_kp' in params else None
 
         self.pre_processor = pre_processor.build_preprocessor(params['preprocess'], train)
@@ -167,7 +165,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 processed_features.append(selected_cav_processed['processed_features'])
 
                 if self.kd_flag:
-                projected_lidar_clean_list.append(selected_cav_processed['projected_lidar_clean'])
+                    projected_lidar_clean_list.append(selected_cav_processed['projected_lidar_clean'])
 
                 if self.visualize:
                     projected_lidar_stack.append(selected_cav_processed['projected_lidar'])
