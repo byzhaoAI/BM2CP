@@ -127,7 +127,7 @@ def main():
                 _batch_data = batch_data[0]
                 batch_data = train_utils.to_device(batch_data, device)
                 _batch_data = train_utils.to_device(_batch_data, device)
-                
+
                 ouput_dict = model(batch_data)
                 final_loss = criterion(ouput_dict, _batch_data['ego']['label_dict'])
             else:
@@ -191,11 +191,21 @@ def main():
                     optimizer.zero_grad()
                     model.eval()
 
-                    batch_data = train_utils.to_device(batch_data, device)
-                    batch_data['ego']['epoch'] = epoch
-                    ouput_dict = model(batch_data['ego'])
+                    if 'scope' or 'how2comm' in hypes['name']:
+                        _batch_data = batch_data[0]
+                        batch_data = train_utils.to_device(batch_data, device)
+                        _batch_data = train_utils.to_device(_batch_data, device)
+                        
+                        ouput_dict = model(batch_data)
+                        final_loss = criterion(ouput_dict, _batch_data['ego']['label_dict'])
 
-                    final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
+                    else:
+                        batch_data = train_utils.to_device(batch_data, device)
+                        batch_data['ego']['epoch'] = epoch
+                        ouput_dict = model(batch_data['ego'])
+
+                        final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
+                    
                     if False:
                     #if len(output_dict) > 2:
                         single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
@@ -222,10 +232,10 @@ def main():
                 f.write(msg)
 
             # lowest val loss
-            if valid_ave_loss < lowest_val_loss:
-                lowest_val_loss = valid_ave_loss
-                best_saved_path = os.path.join(saved_path, 'net_epoch_bestval_at{}.pth'.format(epoch+1))
-                torch.save(model.state_dict(), best_saved_path)
+            # if valid_ave_loss < lowest_val_loss:
+            #     lowest_val_loss = valid_ave_loss
+            #     best_saved_path = os.path.join(saved_path, 'net_epoch_bestval_at{}.pth'.format(epoch+1))
+            #     torch.save(model.state_dict(), best_saved_path)
 
         scheduler.step(epoch)
 
