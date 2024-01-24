@@ -50,7 +50,7 @@ def main():
                             shuffle=True,
                             pin_memory=True,
                             drop_last=True,
-                            prefetch_factor=2)
+                            prefetch_factor=4)
     val_loader = DataLoader(opencood_validate_dataset,
                             batch_size=hypes['train_params']['batch_size'],
                             num_workers=4,
@@ -58,7 +58,7 @@ def main():
                             shuffle=True,
                             pin_memory=True,
                             drop_last=True,
-                            prefetch_factor=2)
+                            prefetch_factor=4)
 
     print('Creating Model')
     model = train_utils.create_model(hypes)

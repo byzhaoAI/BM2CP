@@ -86,6 +86,11 @@ def main():
     pos_mean_list = [0, 0, 0, 0]
     rot_mean_list = [0, 0, 0, 0]
 
+    pos_std_list = [0.6]
+    rot_std_list = [0.6]
+    pos_mean_list = [0]
+    rot_mean_list = [0]
+
     
     if opt.also_laplace:
         use_laplace_options = [False, True]
@@ -120,7 +125,7 @@ def main():
             opencood_dataset = build_dataset(hypes, visualize=True, train=False)
             data_loader = DataLoader(opencood_dataset,
                                     batch_size=1,
-                                    num_workers=4,
+                                    num_workers=8,
                                     collate_fn=opencood_dataset.collate_batch_test,
                                     shuffle=False,
                                     pin_memory=False,

@@ -8,7 +8,7 @@ yaml_parser: "load_cross_modal_point_pillar_params"
 train_params:
   batch_size: &batch_size 4 #6
   epoches: 50
-  eval_freq: 20
+  eval_freq: 2
   save_freq: 1
   max_cav: &max_cav 2
 
@@ -17,7 +17,7 @@ train: &train True
 
 #comm_range: 100
 noise_setting:
-  add_noise: False
+  add_noise: True
   args: 
     pos_std: 0.6
     rot_std: 0.6
