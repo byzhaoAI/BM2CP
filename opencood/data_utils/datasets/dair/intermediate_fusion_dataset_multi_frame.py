@@ -438,7 +438,8 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         for j in range(len(batch[0])):
             
             record_len = [] # used to record different scenario
-
+            lidar_pose_list = []
+            lidar_pose_clean_list = []
             pairwise_t_matrix_list = [] # pairwise transformation matrix
             processed_lidar_list = []
             label_dict_list = []
@@ -468,7 +469,8 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 ego_dict = batch[i][j]['ego']
                 
                 record_len.append(ego_dict['cav_num'])
-
+                lidar_pose_list.append(ego_dict['lidar_poses'])     # shape = np.ndarray [N,6-DOF]
+                lidar_pose_clean_list.append(ego_dict['lidar_poses_clean'])  
                 pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
                 processed_lidar_list.append(ego_dict['processed_lidar'])
                 label_dict_list.append(ego_dict['label_dict'])
@@ -544,7 +546,9 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                     'label_dict_single_i': label_torch_dict_single_i,
                     'processed_lidar': processed_lidar_torch_dict,
                     'record_len': record_len,
-                    'pairwise_t_matrix': pairwise_t_matrix
+                    'pairwise_t_matrix': pairwise_t_matrix,
+                    'lidar_pose_clean': lidar_pose_clean,
+                    'lidar_pose': lidar_pose
                 }
             }
 
