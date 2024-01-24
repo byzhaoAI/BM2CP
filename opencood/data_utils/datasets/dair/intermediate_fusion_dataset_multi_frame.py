@@ -574,7 +574,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
             # save the transformation matrix (4, 4) to ego vehicle
             output_dict_list[i]['ego'].update({
-                'transformation_matrix': torch.from_numpy(np.identity(4)).float()
+                'transformation_matrix': torch.from_numpy(np.identity(4)).float(),
                 'transformation_matrix_clean': torch.from_numpy(np.identity(4)).float()
 
             })
