@@ -208,11 +208,27 @@ class PointPillarScope(nn.Module):
         
         psm_cross = self.cls_head(fused_feature)
         rm_cross = self.reg_head(fused_feature)
+
+        split_psm_single = self.regroup(psm_single, record_len)
+        split_rm_single = self.regroup(rm_single, record_len)
+        psm_single_v = []
+        psm_single_i = []
+        rm_single_v = []
+        rm_single_i = []
+        for b in range(len(split_psm_single)):
+            psm_single_v.append(split_psm_single[b][0:1])
+            psm_single_i.append(split_psm_single[b][1:2])
+            rm_single_v.append(split_rm_single[b][0:1])
+            rm_single_i.append(split_rm_single[b][1:2])
+        psm_single_v = torch.cat(psm_single_v, dim=0)
+        psm_single_i = torch.cat(psm_single_i, dim=0)
+        rm_single_v = torch.cat(rm_single_v, dim=0)
+        rm_single_i = torch.cat(rm_single_i, dim=0)
         
         ego_feature_list = [x[0:1,:] for x in regroup_feature_list[0]]
         ego_feature = torch.cat(ego_feature_list,dim=0)
         final_feature = self.late_fusion([temporal_output,ego_feature,fused_feature],psm_temporal,psm_single_v,psm_cross)
-        print('fused_feature:{},final_feature:{}'.format(fused_feature.shape,final_feature.shape))
+        # print('fused_feature:{},final_feature:{}'.format(fused_feature.shape,final_feature.shape))
         
         psm = self.cls_head(final_feature)
         rm = self.reg_head(final_feature)
@@ -221,25 +237,9 @@ class PointPillarScope(nn.Module):
                     'rm': rm
                     }
         output_dict.update(result_dict)
-        print("communication rate:",communication_rates)
+        # print("communication rate:",communication_rates)
         
         if self.supervise_single: 
-            split_psm_single = self.regroup(psm_single, record_len)
-            split_rm_single = self.regroup(rm_single, record_len)
-            psm_single_v = []
-            psm_single_i = []
-            rm_single_v = []
-            rm_single_i = []
-            for b in range(len(split_psm_single)):
-                psm_single_v.append(split_psm_single[b][0:1])
-                psm_single_i.append(split_psm_single[b][1:2])
-                rm_single_v.append(split_rm_single[b][0:1])
-                rm_single_i.append(split_rm_single[b][1:2])
-            psm_single_v = torch.cat(psm_single_v, dim=0)
-            psm_single_i = torch.cat(psm_single_i, dim=0)
-            rm_single_v = torch.cat(rm_single_v, dim=0)
-            rm_single_i = torch.cat(rm_single_i, dim=0)
-            
             output_dict.update({'psm_single_v': psm_single_v,
                         'psm_single_i': psm_single_i,
                         'rm_single_v': rm_single_v,

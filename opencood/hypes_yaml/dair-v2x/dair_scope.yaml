@@ -132,7 +132,7 @@ model:
       num_filters: *num_filters
       temporal_fusion: 
         height: 100
-        width: 352
+        width: 252
         layers: 1 
         channel: 256
         gate: False
