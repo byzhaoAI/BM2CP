@@ -201,6 +201,12 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 'object_ids': object_id_stack,
                 'object_bbx_center': object_bbx_center,
                 'object_bbx_mask': mask,
+                'object_ids_single_v': object_id_stack_single_v,
+                'object_bbx_center_single_v': object_bbx_center_single_v,
+                'object_bbx_mask_single_v': mask_single_v,
+                'object_ids_single_i': object_id_stack_single_i,
+                'object_bbx_center_single_i': object_bbx_center_single_i,
+                'object_bbx_mask_single_i': mask_single_i,
             }
             if self.kd_flag:
                 processed_data_dict['ego'].update({'teacher_processed_lidar': stack_feature_processed})
