@@ -193,6 +193,8 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             processed_data_dict['ego'] = {
                 'cav_num': len(cav_id_list),
                 'pairwise_t_matrix': self.get_pairwise_transformation(base_data_dict, self.max_cav),
+                'lidar_poses': np.array(lidar_pose_list).reshape(-1, 6),  # [N_cav, 6]
+                'lidar_poses_clean': np.array(lidar_pose_clean_list).reshape(-1, 6),  # [N_cav, 6],
                 'processed_lidar': merged_feature_dict,
                 'label_dict': label_dict,
                 'label_dict_single_v': label_dict_single_v,
