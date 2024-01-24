@@ -122,19 +122,28 @@ def main():
             model.train()
             model.zero_grad()
             optimizer.zero_grad()
-            batch_data = train_utils.to_device(batch_data, device)
-            # case1 : late fusion train --> only ego needed,
-            # and ego is (random) selected
-            # case2 : early fusion train --> all data projected to ego
-            # case3 : intermediate fusion --> ['ego']['processed_lidar']
-            # becomes a list, which containing all data from other cavs
-            # as well
-            batch_data['ego']['epoch'] = epoch
-            output_dict = model(batch_data['ego'])
-            #print(output_dict.keys())
-            # first argument is always your output dictionary,
-            # second argument is always your label dictionary.
-            final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
+
+            if 'scope' or 'how2comm' in hypes['name']:
+                _batch_data = batch_data[0]
+                batch_data = train_utils.to_device(batch_data, device)
+                _batch_data = train_utils.to_device(_batch_data, device)
+                
+                ouput_dict = model(batch_data)
+                final_loss = criterion(ouput_dict, _batch_data['ego']['label_dict'])
+            else:
+                batch_data = train_utils.to_device(batch_data, device)
+                # case1 : late fusion train --> only ego needed,
+                # and ego is (random) selected
+                # case2 : early fusion train --> all data projected to ego
+                # case3 : intermediate fusion --> ['ego']['processed_lidar']
+                # becomes a list, which containing all data from other cavs
+                # as well
+                batch_data['ego']['epoch'] = epoch
+                output_dict = model(batch_data['ego'])
+                #print(output_dict.keys())
+                # first argument is always your output dictionary,
+                # second argument is always your label dictionary.
+                final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
             if False:
             #if len(output_dict) > 2:
                 single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
