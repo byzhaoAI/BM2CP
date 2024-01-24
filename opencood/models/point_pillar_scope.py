@@ -239,12 +239,11 @@ class PointPillarScope(nn.Module):
         output_dict.update(result_dict)
         # print("communication rate:",communication_rates)
         
-        if self.supervise_single: 
-            output_dict.update({'psm_single_v': psm_single_v,
-                        'psm_single_i': psm_single_i,
-                        'rm_single_v': rm_single_v,
-                        'rm_single_i': rm_single_i,
-                        'comm_rate': communication_rates
-                        })
+        output_dict.update({'psm_single_v': psm_single_v,
+                    'psm_single_i': psm_single_i,
+                    'rm_single_v': rm_single_v,
+                    'rm_single_i': rm_single_i,
+                    'comm_rate': communication_rates
+                    })
         
         return output_dict
