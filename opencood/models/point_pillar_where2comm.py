@@ -50,8 +50,8 @@ class PointPillarWhere2comm(nn.Module):
         self.fusion_net = Where2comm(args['fusion_args'])
         self.multi_scale = args['fusion_args']['multi_scale']
 
-        self.cls_head = nn.Conv2d(args['head_dim'], args['anchor_number'], kernel_size=1)    # 分类头, True/False 256 -> 2
-        self.reg_head = nn.Conv2d(args['head_dim'], 7 * args['anchor_number'], kernel_size=1)    # 回归头, x/y/z/h/w/l/yaw 256, 14
+        self.cls_head = nn.Conv2d(256, args['anchor_number'], kernel_size=1)    # 分类头, True/False 256 -> 2
+        self.reg_head = nn.Conv2d(256, 7 * args['anchor_number'], kernel_size=1)    # 回归头, x/y/z/h/w/l/yaw 256, 14
         if args['backbone_fix']:
             self.backbone_fix()
 

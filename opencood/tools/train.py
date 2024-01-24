@@ -20,8 +20,6 @@ import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils
 from opencood.data_utils.datasets import build_dataset
 
-#from icecream import ic
-
 
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -47,7 +45,7 @@ def main():
 
     train_loader = DataLoader(opencood_train_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=1,
+                            num_workers=4,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
@@ -55,7 +53,7 @@ def main():
                             prefetch_factor=2)
     val_loader = DataLoader(opencood_validate_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=1,
+                            num_workers=4,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
@@ -203,6 +201,8 @@ def main():
                                         round_loss_v = criterion(output_dict, batch_data['ego']['label_dict'], prefix='_v{}'.format(round_id))
                                         final_loss += round_loss_v
                     valid_ave_loss.append(final_loss.item())
+                    torch.cuda.empty_cache()
+
             print("valid_ave_loss: ", valid_ave_loss)
             valid_ave_loss = statistics.mean(valid_ave_loss)
             print('At epoch %d, the validation loss is %f' % (epoch, valid_ave_loss))
@@ -217,8 +217,6 @@ def main():
                 lowest_val_loss = valid_ave_loss
                 best_saved_path = os.path.join(saved_path, 'net_epoch_bestval_at{}.pth'.format(epoch+1))
                 torch.save(model.state_dict(), best_saved_path)
-
-            torch.cuda.empty_cache()
 
         scheduler.step(epoch)
 

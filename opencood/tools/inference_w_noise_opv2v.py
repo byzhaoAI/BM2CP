@@ -15,8 +15,8 @@ import numpy as np
 import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils, inference_utils
 from opencood.data_utils.datasets import build_dataset
-# from opencood.utils import eval_utils
-from opencood.utils import eval_utils_coalign as eval_utils
+from opencood.utils import eval_utils
+# from opencood.utils import eval_utils_where2comm as eval_utils
 from opencood.visualization import simple_vis
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -234,7 +234,8 @@ def main():
 
                 torch.cuda.empty_cache()
 
-            ap30, ap50, ap70 = eval_utils.eval_final_results(result_stat, opt.model_dir, noise_level)
+            ap30, ap50, ap70 = eval_utils.eval_final_results(result_stat,
+                                        opt.model_dir, noise_level)
             AP30.append(ap30)
             AP50.append(ap50)
             AP70.append(ap70)

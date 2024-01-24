@@ -1,50 +1,43 @@
-name: dair_where2comm_attn_multiscale_resnet
+name: dair_how2comm
 data_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 test_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 
-
-# load yaml file
 yaml_parser: "load_point_pillar_params"
+train_params:
+  batch_size: &batch_size 1
+  epoches: 20
+  eval_freq: 2
+  save_freq: 1
+  max_cav: &max_cav 5
+  frame: &frame 1
 
-# comm_range: 100
+device: &device cuda
+train: &train True
 
-# select_kp: true
-
+#comm_range: 100
 noise_setting:
   add_noise: False
-  args:
+  args: 
     pos_std: 0.2
     rot_std: 0.2
     pos_mean: 0
     rot_mean: 0
 
-train_params:
-  batch_size: &batch_size 2 #6
-  epoches: 30
-  eval_freq: 1
-  save_freq: 1
-  max_cav: &max_cav 2
-
-
-# dataset configs: fusion, preprocess, postprocess
 fusion:
-  core_method: 'IntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'IntermediateFusionDatasetOPV2V_Multi' 
   args:
-    proj_first: false
-    clip_pc: false
+    cur_ego_pose_flag: true
 
 preprocess:
-  # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
   core_method: 'SpVoxelPreprocessor'
   args:
     voxel_size: &voxel_size [0.4, 0.4, 4]
     max_points_per_voxel: 32
     max_voxel_train: 32000
     max_voxel_test: 70000
-  # lidar range for each individual cav. Format: xyzxyz minmax
-  cav_lidar_range: &cav_lidar [-100.8, -40, -3, 100.8, 40, 1]
+  cav_lidar_range: &cav_lidar  [-100.8, -40, -3, 100.8, 40, 1]
 
 data_augment:
   - NAME: random_world_flip
@@ -56,9 +49,9 @@ data_augment:
   - NAME: random_world_scaling
     WORLD_SCALE_RANGE: [ 0.95, 1.05 ]
 
-# anchor box related
+
 postprocess:
-  core_method: 'VoxelPostprocessor' # VoxelPostprocessor, BevPostprocessor supported
+  core_method: 'VoxelPostprocessor' 
   gt_range: *cav_lidar
   anchor_args:
     cav_lidar_range: *cav_lidar
@@ -71,23 +64,23 @@ postprocess:
   target_args:
     pos_threshold: 0.6
     neg_threshold: 0.45
-    score_threshold: 0.2
-  order: 'hwl' # hwl or lwh
-  max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
+    score_threshold: 0.20
+  order: 'hwl' 
+  max_num: 100 
   nms_thresh: 0.15
 
 
-# model related
 model:
-  core_method: point_pillar_where2comm
+  core_method: point_pillar_how2comm
   
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *achor_num
     max_cav: *max_cav
-    compression: 0 # compression rate
+    compression: 0 
     backbone_fix: false
+    flow_flag: true  
 
     pillar_vfe:
       use_norm: true
@@ -98,7 +91,7 @@ model:
       num_features: 64
 
     base_bev_backbone:
-      resnet: true
+      resnet: True
       layer_nums: &layer_nums [3, 4, 5]
       layer_strides: [2, 2, 2]
       num_filters: &num_filters [64, 128, 256]
@@ -106,24 +99,14 @@ model:
       num_upsample_filter: [128, 128, 128]
       compression: 0
       voxel_size: *voxel_size
-    
     shrink_header:
       kernal_size: [ 3 ]
       stride: [ 1 ]
       padding: [ 1 ]
       dim: [ 256 ]
-      input_dim: 384 # 128 * 3
-    
-    # dcn:
-    #   in_channels: [384]
-    #   out_channels: [256]
-    #   stride: [1]
-    #   padding: [1]
-    #   kernel_size : [3]
-    #   n_blocks: 1
+      input_dim: 384 
 
     fusion_args:
-      head_dim: 256
       voxel_size: *voxel_size
       downsample_rate: 1
       in_channels: 256
@@ -132,15 +115,37 @@ model:
       only_attention: true
       communication:
         thre: 0.01
-      #   gaussian_smooth:
-      #     k_size: 5
-      #     c_sigma: 1.0
+        compressed_dim: 2  
+        request_flag: True
+        gaussian_smooth:
+          k_size: 5
+          c_sigma: 1.0
+      communication_flag: True
       agg_operator:
-        mode: 'ATTEN'
+        mode: 'STCFormer'
         feature_dim: 256
+        n_head: 8
+        depth: 1
+        embed_pos: None
+        with_spe: false
+        with_scm: false
+        hetero: False
       multi_scale: true
+      frame: *frame
       layer_nums: *layer_nums
       num_filters: *num_filters
+      temporal_fusion:  
+        height: [100, 50, 25, 100]
+        width: [352, 176, 88, 352]
+        layers: 1 
+        channel: [64, 128, 256, 256]
+        gate: False
+        n_head: 5
+        rte_ratio: 1
+        hidden_dim: [64, 128, 256, 256]  
+        delay: 0
+        compressed_dim: 2  
+      only_ego: False
 
 
 loss:
@@ -157,7 +162,6 @@ optimizer:
     weight_decay: 1e-4
 
 lr_scheduler:
-  core_method: multistep #step, multistep and Exponential support
+  core_method: multistep 
   gamma: 0.1
   step_size: [10, 20]
-

@@ -58,11 +58,15 @@ def load_saved_model(saved_path, model, epoch=None):
 
     # if os.path.exists(os.path.join(saved_path, 'net_latest.pth')):
     #     model.load_state_dict(torch.load(os.path.join(saved_path, 'net_latest.pth')))
-    file_list = glob.glob(os.path.join(saved_path, 'net_epoch_bestval_at*.pth'))
-    if file_list:
-        assert len(file_list) == 1
-        model.load_state_dict(torch.load(file_list[0], map_location='cpu'), strict=False)
-        return eval(file_list[0].split("/")[-1].rstrip(".pth").lstrip("net_epoch_bestval_at")), model
+    #file_list = glob.glob(os.path.join(saved_path, 'net_epoch_bestval_at*.pth'))
+    
+    if False:
+        pass
+    #if file_list:
+    #    assert len(file_list) == 1
+    #    model.load_state_dict(torch.load(file_list[0], map_location='cpu'), strict=False)
+    #    return eval(file_list[0].split("/")[-1].rstrip(".pth").lstrip("net_epoch_bestval_at")), model
+    
     #if os.path.exists(os.path.join(saved_path, 'net_epoch_bestval*.pth')):
     #    model.load_state_dict(torch.load(os.path.join(saved_path, 'net_epoch_bestval*.pth')))
     #    return 100, model

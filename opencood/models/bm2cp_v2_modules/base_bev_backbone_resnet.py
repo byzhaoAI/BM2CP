@@ -1,9 +1,3 @@
-"""
-Resblock is much strong than normal conv
-
-Provide api for multiscale intermeidate fuion
-"""
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,7 +7,7 @@ from opencood.models.common_modules.resblock import ResNetModified, BasicBlock
 DEBUG = False
 
 class ResNetBEVBackbone(nn.Module):
-    def __init__(self, model_cfg, input_channels=64):
+    def __init__(self, model_cfg, input_channels):
         super().__init__()
         self.model_cfg = model_cfg
 
@@ -42,8 +36,7 @@ class ResNetBEVBackbone(nn.Module):
         self.resnet = ResNetModified(BasicBlock, 
                                         layer_nums,
                                         layer_strides,
-                                        num_filters,
-                                        inplanes = model_cfg.get('inplanes', 64))
+                                        num_filters)
 
         num_levels = len(layer_nums)
         self.num_levels = len(layer_nums)
@@ -109,37 +102,4 @@ class ResNetBEVBackbone(nn.Module):
 
         data_dict['spatial_features_2d'] = x
         return data_dict
-
-    # these two functions are seperated for multiscale intermediate fusion
-    def get_multiscale_feature(self, spatial_features):
-        """
-        before multiscale intermediate fusion
-        """
-        x = self.resnet(spatial_features)  # tuple of features
-        return x
-
-    def decode_multiscale_feature(self, x):
-        """
-        after multiscale interemediate fusion
-        """
-        ups = []
-        for i in range(self.num_levels):
-            if len(self.deblocks) > 0:
-                ups.append(self.deblocks[i](x[i]))
-            else:
-                ups.append(x[i])
-        if len(ups) > 1:
-            x = torch.cat(ups, dim=1)
-        elif len(ups) == 1:
-            x = ups[0]
-
-        if len(self.deblocks) > self.num_levels:
-            x = self.deblocks[-1](x)
-        return x
-        
-    def get_layer_i_feature(self, spatial_features, layer_i):
-        """
-        before multiscale intermediate fusion
-        """
-        return eval(f"self.resnet.layer{layer_i}")(spatial_features)  # tuple of features
-    
+        #return x
