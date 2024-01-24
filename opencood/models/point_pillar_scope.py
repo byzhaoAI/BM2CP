@@ -205,22 +205,6 @@ class PointPillarScope(nn.Module):
                                             psm_single,
                                             record_len,
                                             pairwise_t_matrix)
-                 
-        split_psm_single = self.regroup(psm_single, record_len)
-        split_rm_single = self.regroup(rm_single, record_len)
-        psm_single_v = []
-        psm_single_i = []
-        rm_single_v = []
-        rm_single_i = []
-        for b in range(len(split_psm_single)):
-            psm_single_v.append(split_psm_single[b][0:1])
-            psm_single_i.append(split_psm_single[b][1:2])
-            rm_single_v.append(split_rm_single[b][0:1])
-            rm_single_i.append(split_rm_single[b][1:2])
-        psm_single_v = torch.cat(psm_single_v, dim=0)
-        psm_single_i = torch.cat(psm_single_i, dim=0)
-        rm_single_v = torch.cat(rm_single_v, dim=0)
-        rm_single_i = torch.cat(rm_single_i, dim=0)
         
         psm_cross = self.cls_head(fused_feature)
         rm_cross = self.reg_head(fused_feature)
@@ -239,10 +223,28 @@ class PointPillarScope(nn.Module):
         output_dict.update(result_dict)
         print("communication rate:",communication_rates)
         
-        output_dict.update({'psm_single_v': psm_single_v,
-                       'psm_single_i': psm_single_i,
-                       'rm_single_v': rm_single_v,
-                       'rm_single_i': rm_single_i,
-                       'comm_rate': communication_rates
-                       })
+        if self.supervise_single: 
+            split_psm_single = self.regroup(psm_single, record_len)
+            split_rm_single = self.regroup(rm_single, record_len)
+            psm_single_v = []
+            psm_single_i = []
+            rm_single_v = []
+            rm_single_i = []
+            for b in range(len(split_psm_single)):
+                psm_single_v.append(split_psm_single[b][0:1])
+                psm_single_i.append(split_psm_single[b][1:2])
+                rm_single_v.append(split_rm_single[b][0:1])
+                rm_single_i.append(split_rm_single[b][1:2])
+            psm_single_v = torch.cat(psm_single_v, dim=0)
+            psm_single_i = torch.cat(psm_single_i, dim=0)
+            rm_single_v = torch.cat(rm_single_v, dim=0)
+            rm_single_i = torch.cat(rm_single_i, dim=0)
+            
+            output_dict.update({'psm_single_v': psm_single_v,
+                        'psm_single_i': psm_single_i,
+                        'rm_single_v': rm_single_v,
+                        'rm_single_i': rm_single_i,
+                        'comm_rate': communication_rates
+                        })
+        
         return output_dict

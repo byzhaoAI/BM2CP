@@ -146,7 +146,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             lidar_pose_list.append(selected_cav_base['params']['lidar_pose']) # 6dof pose
             lidar_pose_clean_list.append(selected_cav_base['params']['lidar_pose_clean'])
         
-        for cav_id in filtered_cav_id:
+        for cav_id in filteredcav_id:
             base_data_dict.pop(cav_id)
 
 
@@ -511,7 +511,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 origin_lidar.append(ego_dict['origin_lidar'])
                 origin_lidar_v.append(ego_dict['origin_lidar_v'])
                 origin_lidar_i.append(ego_dict['origin_lidar_i'])
-        
+
         # convert to numpy, (batch_size, max_num, 7)
         object_bbx_center = torch.from_numpy(np.array(object_bbx_center))
         object_bbx_mask = torch.from_numpy(np.array(object_bbx_mask))

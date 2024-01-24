@@ -26,7 +26,7 @@ noise_setting:
     rot_mean: 0
 
 fusion:
-  core_method: 'IntermediateFusionDatasetOPV2V_Multi' 
+  core_method: 'IntermediateFusionDatasetDAIR_Multi' 
   args:
     cur_ego_pose_flag: true
 
