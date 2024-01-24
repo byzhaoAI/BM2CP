@@ -9,7 +9,7 @@ from einops import rearrange, repeat
 
 # from opencood.models.comm_modules.comm_module import Communication
 from opencood.models.common_modules.torch_transformation_utils import warp_affine_simple
-from opencood.models.fuse_modules.scope_deformable_transformer import RPN_transformer_deformable_mtf_singlescale
+from opencood.models.scope_modules.scope_deformable_transformer import RPN_transformer_deformable_mtf_singlescale
 
 
 class ScaledDotProductAttention(nn.Module):
