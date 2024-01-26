@@ -140,7 +140,7 @@ def main():
 
             for i, _batch_data in enumerate(data_loader):
                 print(f"{noise_level}_{i}")
-                if batch_data is None:
+                if _batch_data is None:
                     continue
 
                 with torch.no_grad():

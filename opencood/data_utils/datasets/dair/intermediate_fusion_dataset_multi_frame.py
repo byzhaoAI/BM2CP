@@ -559,7 +559,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 output_dict['ego'].update({'teacher_processed_lidar':teacher_processed_lidar_torch_dict})
         
             if self.visualize:
-                origin_lidar = np.array(downsample_lidar_minimum(pcd_np_list=origin_lidar))
+                origin_lidar = np.array(pcd_utils.downsample_lidar_minimum(pcd_np_list=origin_lidar))
                 origin_lidar = torch.from_numpy(origin_lidar)
                 output_dict['ego'].update({'origin_lidar': origin_lidar})
 
@@ -612,7 +612,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         gt_box_tensor : torch.Tensor
             The tensor of gt bounding box.
         """
-        pred_box_tensor, pred_score = self.post_processor.post_process(data_dict, output_dict)
+        pred_box_tensor, pred_score = self.post_processor.post_process(data_dict['ego'][0], output_dict)
         gt_box_tensor = self.post_processor.generate_gt_bbx(data_dict)
 
         return pred_box_tensor, pred_score, gt_box_tensor
