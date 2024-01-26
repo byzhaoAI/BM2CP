@@ -138,12 +138,16 @@ def main():
             noise_level = f"{pos_std}_{rot_std}_{pos_mean}_{rot_mean}_" + opt.fusion_method + suffix + opt.note
 
 
-            for i, batch_data in enumerate(data_loader):
+            for i, _batch_data in enumerate(data_loader):
                 print(f"{noise_level}_{i}")
                 if batch_data is None:
                     continue
+
                 with torch.no_grad():
-                    batch_data = train_utils.to_device(batch_data, device)
+                    if 'scope' in hypes['name'] or 'how2comm' in hypes['name']:
+                        batch_data = {'ego': train_utils.to_device(_batch_data, device)}
+                    else:
+                        batch_data = train_utils.to_device(_batch_data, device)
                     
                     if opt.fusion_method == 'late':
                         pred_box_tensor, pred_score, gt_box_tensor = \
