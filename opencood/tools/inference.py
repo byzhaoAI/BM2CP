@@ -20,7 +20,6 @@ from opencood.tools import train_utils
 # from opencood.tools import train_utils as train_utils
 from opencood.tools import inference_utils as inference_utils
 from opencood.data_utils.datasets import build_dataset
-from opencood.utils import eval_utils
 from opencood.visualization import simple_vis
 from tqdm import tqdm
 from PIL import Image
@@ -59,20 +58,33 @@ def main():
     if opt.comm_thre is not None:
         hypes['model']['args']['fusion_args']['communication']['thre'] = opt.comm_thre
 
-    hypes['validate_dir'] = hypes['test_dir']
-    # assert "test" in hypes['validate_dir']
-    left_hand = True if "OPV2V" in hypes['test_dir'] else False
+    if 'opv2v' in opt.model_dir:
+        from opencood.utils import eval_utils_opv2v as eval_utils
+        left_hand = True
+
+    elif 'dair' in opt.model_dir:
+        from opencood.utils import eval_utils_where2comm as eval_utils
+        hypes['validate_dir'] = hypes['test_dir']
+        left_hand = False
+
+    else:
+        print(f"The path should contain one of the following strings [opv2v|dair] .")
+        return 
+    
     print(f"Left hand visualizing: {left_hand}")
 
     print('Dataset Building')
     opencood_dataset = build_dataset(hypes, visualize=True, train=False)
+    print(f"{len(opencood_dataset)} samples found.")
+
     data_loader = DataLoader(opencood_dataset,
                              batch_size=1,
-                             num_workers=8,
+                             num_workers=16,
                              collate_fn=opencood_dataset.collate_batch_test,
                              shuffle=False,
                              pin_memory=False,
-                             drop_last=False)
+                             drop_last=False
+                             )
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
@@ -89,9 +101,12 @@ def main():
     model.eval()
 
     # Create the dictionary for evaluation
-    result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0},
-                   0.5: {'tp': [], 'fp': [], 'gt': 0},
-                   0.7: {'tp': [], 'fp': [], 'gt': 0}}
+    #result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0},
+    #               0.5: {'tp': [], 'fp': [], 'gt': 0},
+    #               0.7: {'tp': [], 'fp': [], 'gt': 0}}
+    result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0, 'score': []},                
+                   0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},                
+                   0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
 
     total_comm_rates = []
     # total_box = []
@@ -122,15 +137,18 @@ def main():
             eval_utils.caluclate_tp_fp(pred_box_tensor,
                                        pred_score,
                                        gt_box_tensor,
-                                       result_stat, 0.3)
+                                       result_stat,
+                                       0.3)
             eval_utils.caluclate_tp_fp(pred_box_tensor,
                                        pred_score,
                                        gt_box_tensor,
-                                       result_stat, 0.5)
+                                       result_stat,
+                                       0.5)
             eval_utils.caluclate_tp_fp(pred_box_tensor,
                                        pred_score,
                                        gt_box_tensor,
-                                       result_stat,0.7)
+                                       result_stat,
+                                       0.7)
                                        
             if opt.save_npy:
                 npy_save_path = os.path.join(opt.model_dir, 'npy')
@@ -184,14 +202,16 @@ def main():
                 if not os.path.exists(vis_save_path):
                     os.makedirs(vis_save_path)
                 vis_save_path = os.path.join(opt.model_dir, 'vis_3d/3d_%05d.png' % i)
-                simple_vis.visualize(pred_box_tensor, gt_box_tensor, batch_data['ego']['origin_lidar'][0], hypes['postprocess']['gt_range'], 
+                simple_vis.visualize(pred_box_tensor, gt_box_tensor, batch_data['ego']['origin_lidar'][0], 
+                                     hypes['preprocess']['cav_lidar_range'], # hypes['postprocess']['gt_range'], 
                                      vis_save_path, method='3d', left_hand=left_hand, vis_pred_box=True)
                 
                 vis_save_path = os.path.join(opt.model_dir, 'vis_bev')
                 if not os.path.exists(vis_save_path):
                     os.makedirs(vis_save_path)
                 vis_save_path = os.path.join(opt.model_dir, 'vis_bev/bev_%05d.png' % i)
-                simple_vis.visualize(pred_box_tensor, gt_box_tensor, batch_data['ego']['origin_lidar'][0], hypes['postprocess']['gt_range'], 
+                simple_vis.visualize(pred_box_tensor, gt_box_tensor, batch_data['ego']['origin_lidar'][0],
+                                     hypes['preprocess']['cav_lidar_range'], # hypes['postprocess']['gt_range'], 
                                      vis_save_path, method='bev', left_hand=left_hand, vis_pred_box=True)
                 """
                 

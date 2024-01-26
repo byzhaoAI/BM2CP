@@ -27,7 +27,13 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
                                                 train)
         self.post_processor = post_processor.build_postprocessor(
             params['postprocess'],
-            train)
+            dataset='opv2v', 
+            train=train)
+
+        self.proj_first = False
+        if 'proj_first' in params['fusion']['args']:
+            self.proj_first = params['fusion']['args']['proj_first']
+        print('proj_first: ', self.proj_first)
 
     def __getitem__(self, idx):
         select_num = self.frame
@@ -235,9 +241,9 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # remove points that hit itself
         lidar_np = mask_ego_points(lidar_np)
         # project the lidar to ego space
-        lidar_np[:, :3] = \
-            box_utils.project_points_by_matrix_torch(lidar_np[:, :3],
-                                                     transformation_matrix)
+        if self.proj_first:
+            lidar_np[:, :3] = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
+        
         lidar_np = mask_points_by_range(lidar_np,
                                         self.params['preprocess'][
                                             'cav_lidar_range'])

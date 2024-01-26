@@ -12,9 +12,12 @@ from torchvision.models.resnet import resnet18
 
 from opencood.models.common_modules.pillar_vfe import PillarVFE
 from opencood.models.common_modules.point_pillar_scatter import PointPillarScatter
-from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone
+from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone as PCBaseBEVBackbone
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
+
+from opencood.utils import camera_utils
+from opencood.utils.camera_utils import gen_dx_bx, cumsum_trick, QuickCumsum, depth_discretization
 
 from opencood.models.bm2cp_v2_modules.base_bev_backbone_resnet import ResNetBEVBackbone
 from opencood.models.bm2cp_v2_modules.attentioncomm import MultiModalAttenComm

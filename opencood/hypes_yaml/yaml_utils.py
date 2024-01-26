@@ -154,7 +154,6 @@ def load_cross_modal_point_pillar_params(param):
 
     grid_size = (np.array(cav_lidar_range[3:6]) - np.array(cav_lidar_range[0:3])) / np.array(voxel_size)
     grid_size = np.round(grid_size).astype(np.int64)
-    print('grid_size: ', grid_size)
     param['model']['args']['pc_params']['point_pillar_scatter']['grid_size'] = grid_size
 
     anchor_args = param['postprocess']['anchor_args']

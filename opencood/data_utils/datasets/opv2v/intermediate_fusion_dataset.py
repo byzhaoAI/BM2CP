@@ -42,9 +42,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # the ego's coordinate frame. otherwise, the feature will be
         # projected instead.
         self.proj_first = False
-        if 'proj_first' in params['fusion']['args'] and \
-            not params['fusion']['args']['proj_first']:
-            self.proj_first = False
+        if 'proj_first' in params['fusion']['args']:
+            self.proj_first = params['fusion']['args']['proj_first']
         # self.proj_first = False
         print('proj_first: ', self.proj_first)
 
@@ -58,7 +57,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
                                                 train)
         self.post_processor = post_processor.build_postprocessor(
             params['postprocess'],
-            train)
+            dataset='opv2v', 
+            train=train)
 
     def __getitem__(self, idx):
         base_data_dict, _, _ = self.retrieve_base_data(idx, cur_ego_pose_flag=self.cur_ego_pose_flag)

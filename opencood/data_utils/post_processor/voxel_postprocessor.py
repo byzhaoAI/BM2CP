@@ -14,8 +14,7 @@ import torch
 from torch.nn.functional import sigmoid
 import torch.nn.functional as F
 
-from opencood.data_utils.post_processor.base_postprocessor \
-    import BasePostprocessor
+from opencood.data_utils.post_processor.base_postprocessor import BasePostprocessor
 from opencood.utils import box_utils
 from opencood.utils.box_overlaps import bbox_overlaps
 from opencood.visualization import vis_utils
@@ -23,8 +22,8 @@ from opencood.utils.common_utils import limit_period
 
 
 class VoxelPostprocessor(BasePostprocessor):
-    def __init__(self, anchor_params, train):
-        super(VoxelPostprocessor, self).__init__(anchor_params, train)
+    def __init__(self, anchor_params, dataset, train):
+        super(VoxelPostprocessor, self).__init__(anchor_params, dataset, train)
         self.anchor_num = self.params['anchor_args']['num']
 
     def generate_anchor_box(self):
@@ -352,7 +351,7 @@ class VoxelPostprocessor(BasePostprocessor):
         # predicted 3d bbx
         pred_box3d_tensor = torch.vstack(pred_box3d_list)
         # remove large bbx
-        keep_index_1 = box_utils.remove_large_pred_bbx(pred_box3d_tensor)
+        keep_index_1 = box_utils.remove_large_pred_bbx(pred_box3d_tensor, self.dataset)
         keep_index_2 = box_utils.remove_bbx_abnormal_z(pred_box3d_tensor)
         keep_index = torch.logical_and(keep_index_1, keep_index_2)
 
@@ -372,8 +371,8 @@ class VoxelPostprocessor(BasePostprocessor):
         scores = scores[keep_index]
 
         # filter out the prediction out of the range.
-        mask = \
-            box_utils.get_mask_for_boxes_within_range_torch(pred_box3d_tensor, self.params['gt_range'])
+        #mask = box_utils.get_mask_for_boxes_within_range_torch(pred_box3d_tensor, self.params['gt_range'])
+        mask = box_utils.get_mask_for_boxes_within_range_torch(pred_box3d_tensor, self.params['anchor_args']['cav_lidar_range'])
         pred_box3d_tensor = pred_box3d_tensor[mask, :, :]
         scores = scores[mask]
 

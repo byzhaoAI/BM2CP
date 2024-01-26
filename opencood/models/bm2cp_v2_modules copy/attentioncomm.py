@@ -21,7 +21,7 @@ class MultiModalFusion(nn.Module):
         super().__init__()
         self.grid_att = GridAttEncoder(args)
         
-        self.adapt_conv = nn.Conv2d(dim, 1, kernel_size=3, stride=1, padding=1)
+        self.adapt_conv = nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1)
         self.adapt_cls = nn.Sigmoid()
         
     def forward(self, pc_feat, img_feat):
@@ -63,7 +63,7 @@ class ScaledDotProductAttention(nn.Module):
         context = torch.bmm(attn, value)
         return context
 
-
+"""
 class AttenFusion(nn.Module):
     def __init__(self, feature_dim):
         super(AttenFusion, self).__init__()
@@ -90,7 +90,7 @@ class AttenFusion(nn.Module):
         x = self.att(query, x, x)
         x = x.permute(1, 2, 0).view(1, C, H, W)[0]  # C, W, H before
         return x
-"""
+
 
 def Communication(batch_confidence_maps, threshold_maps, record_len, pairwise_t_matrix):
     # batch_confidence_maps:[(L1, H, W), (L2, H, W), ...]
@@ -111,8 +111,7 @@ def Communication(batch_confidence_maps, threshold_maps, record_len, pairwise_t_
 
         ones_mask = torch.ones_like(communication_maps).to(communication_maps.device)
         zeros_mask = torch.zeros_like(communication_maps).to(communication_maps.device)
-        communication_mask = torch.where(communication_maps > threshold_maps, ones_mask, zeros_mask)
-        # communication_mask = torch.where(communication_maps > threshold_maps[b], ones_mask, zeros_mask)
+        communication_mask = torch.where(communication_maps > threshold_maps[b], ones_mask, zeros_mask)
 
         communication_rate = communication_mask[0].sum() / (H * W)
 
@@ -139,7 +138,7 @@ class MultiModalAttenComm(nn.Module):
             layer_nums = args['layer_nums']
             num_filters = args['num_filters']
             self.num_levels = len(layer_nums)
-
+            
             self.modal_modules = MultiModalFusion(args['grid_att'], num_filters[0])
             self.fuse_modules = nn.ModuleList()
             for idx in range(self.num_levels):
@@ -194,18 +193,16 @@ class MultiModalAttenComm(nn.Module):
             
             for i in range(self.num_levels):
                 x = feats[i] if with_resnet else backbone.blocks[i](x)
-                # img_feat = feats[i] if with_resnet else backbone.blocks[i](img_feat)
+                img_feat = feats[i] if with_resnet else backbone.blocks[i](img_feat)
 
                 if i==0:
                     # modal fusion and threshold map generation
-                    # x, threshold_map = self.modal_modules(x, img_feat)
-                    
+                    x, threshold_map = self.modal_modules(x, img_feat)
                     if x.shape[-1] != rm.shape[-1]:
                         rm = F.interpolate(rm, size=x.shape[2:], mode='bilinear', align_corners=False)
                     
                     batch_confidence_maps = self.regroup(rm, record_len)
-                    # batch_threshold_map = self.regroup(threshold_map, record_len)
-                    batch_threshold_map = 0.01
+                    batch_threshold_map = self.regroup(threshold_map, record_len)
                     _, communication_masks, communication_rates = Communication(batch_confidence_maps, batch_threshold_map, record_len, pairwise_t_matrix)
                     x = x * communication_masks
 
@@ -222,9 +219,9 @@ class MultiModalAttenComm(nn.Module):
                     C, H, W = node_features.shape[1:]
                     neighbor_feature = warp_affine_simple(node_features, t_matrix[0, :, :, :], (H, W))
                     
-                    #query = neighbor_feature[0].unsqueeze(0)
-                    #x_fuse.append(self.fuse_modules[i](query, neighbor_feature))
-                    x_fuse.append(self.fuse_modules[i](neighbor_feature))
+                    query = neighbor_feature[0].unsqueeze(0)
+                    x_fuse.append(self.fuse_modules[i](query, neighbor_feature))
+                    # x_fuse.append(self.fuse_modules[i](neighbor_feature)[0])
 
                 x_fuse = torch.stack(x_fuse)
 

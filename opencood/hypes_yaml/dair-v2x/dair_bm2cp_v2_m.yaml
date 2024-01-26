@@ -1,16 +1,24 @@
-name: dair_where2comm_attn_multiscale_resnet
+name: dair_bm2cp_v2_m
 data_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 test_dir: "data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 
-
 # load yaml file
 yaml_parser: "load_point_pillar_params"
 
-# comm_range: 100
+train_params:
+  batch_size: &batch_size 4
+  epoches: 30
+  eval_freq: 30
+  save_freq: 1
+  max_cav: &max_cav 2
 
+# comm_range: 100
 # select_kp: true
+
+device: &device cuda
+train: &train True
 
 noise_setting:
   add_noise: False
@@ -20,20 +28,30 @@ noise_setting:
     pos_mean: 0
     rot_mean: 0
 
-train_params:
-  batch_size: &batch_size 4
-  epoches: 30
-  eval_freq: 2
-  save_freq: 1
-  max_cav: &max_cav 2
-
-
 # dataset configs: fusion, preprocess, postprocess
 fusion:
-  core_method: 'IntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'LiDARCameraIntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args:
     proj_first: false
     clip_pc: false
+    grid_conf: &grid_conf
+      #xbound: [-48, 48, 0.4]   # 限制x方向的范围并划分网格
+      #ybound: [-48, 48, 0.4]   # 限制y方向的范围并划分网格
+      xbound: [-100.8, 100.8, 0.4]   # 限制x方向的范围并划分网格
+      ybound: [-40, 40, 0.4]   # 限制y方向的范围并划分网格
+      zbound: [-10, 10, 20.0]   # 限制z方向的范围并划分网格
+      ddiscr: [2, 50, 48]
+      mode: 'LID'
+    data_aug_conf: &data_aug_conf
+      resize_lim: [0.7, 0.8]
+      final_dim: &image_size [360, 480]
+      rot_lim: [0, 0] #[-3.6, 3.6]
+      H: 600
+      W: 800
+      rand_flip: False
+      bot_pct_lim: [0.0, 0.20]
+      cams: ['camera0', 'camera1', 'camera2', 'camera3']
+      Ncams: 4
 
 preprocess:
   # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
@@ -79,9 +97,11 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_where2comm
+  core_method: point_pillar_bm2cp_v2_m
   
   args:
+    train: *train
+    supervise_single: False
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *achor_num
@@ -89,13 +109,20 @@ model:
     compression: 0 # compression rate
     backbone_fix: false
 
+    # params for camera branch
+    img_params:
+      grid_conf: *grid_conf
+      data_aug_conf: *data_aug_conf
+      img_downsample: 8
+      chain_channels: &chain_channels 64
+    
     pillar_vfe:
       use_norm: true
       with_distance: false
       use_absolute_xyz: true
       num_filters: [64]
     point_pillar_scatter:
-      num_features: 64
+      num_features: &num_features 64
 
     base_bev_backbone:
       resnet: true
@@ -111,18 +138,13 @@ model:
       kernal_size: [ 3 ]
       stride: [ 1 ]
       padding: [ 1 ]
-      dim: [ 256 ]
+      dim: [ &out_channels 256 ]
       input_dim: 384 # 128 * 3
-    
-    # dcn:
-    #   in_channels: [384]
-    #   out_channels: [256]
-    #   stride: [1]
-    #   padding: [1]
-    #   kernel_size : [3]
-    #   n_blocks: 1
 
     fusion_args:
+      multi_scale: true
+      layer_nums: *layer_nums
+      num_filters: *num_filters
       head_dim: 256
       voxel_size: *voxel_size
       downsample_rate: 1
@@ -138,9 +160,18 @@ model:
       agg_operator:
         mode: 'ATTEN'
         feature_dim: 256
-      multi_scale: true
-      layer_nums: *layer_nums
-      num_filters: *num_filters
+
+      grid_att:
+        dim: *num_features
+        dim_head: 8
+        window_size: [1, 5, 6] # (z, x, y)
+        drop_out: 0.1
+        mlp_dim: *num_features
+        depth: 3
+    # params for prediction
+    outC: *out_channels
+    anchor_number: *achor_num
+    # dir_args: *dir_args
 
 
 loss:
@@ -160,4 +191,3 @@ lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
   step_size: [10, 20]
-

@@ -72,7 +72,7 @@ class EarlyFusionDatasetDAIR(Dataset):
             self.select_keypoint = None
 
         self.pre_processor = build_preprocessor(params['preprocess'], train)
-        self.post_processor = build_postprocessor(params['postprocess'], train)
+        self.post_processor = build_postprocessor(params['postprocess'], dataset='dair', train=train)
 
         if self.train:
             split_dir = params['root_dir']

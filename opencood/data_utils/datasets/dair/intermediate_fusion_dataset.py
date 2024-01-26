@@ -83,7 +83,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
         # pre- and post- precessor, data augmentor
         self.pre_processor = pre_processor.build_preprocessor(params['preprocess'], train)
-        self.post_processor = post_processor.build_postprocessor(params['postprocess'], train)
+        self.post_processor = post_processor.build_postprocessor(params['postprocess'], dataset='dair', train=train)
         self.data_augmentor = augmentor.data_augmentor.DataAugmentor(params['data_augment'], train)
 
         # load dataset json file (info) and data path
@@ -146,7 +146,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             lidar_pose_list.append(selected_cav_base['params']['lidar_pose']) # 6dof pose
             lidar_pose_clean_list.append(selected_cav_base['params']['lidar_pose_clean'])
         
-        for cav_id in filteredcav_id:
+        for cav_id in filtered_cav_id:
             base_data_dict.pop(cav_id)
 
 
@@ -459,7 +459,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
         label_dict_list = []
         label_dict_list_single_v = []
-        label_dict_list_single_i = []        
+        label_dict_list_single_i = []
 
         object_ids = []
         object_bbx_center = []

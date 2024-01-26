@@ -152,14 +152,14 @@ def calculate_ap(result_stat, iou, global_sort_detections):
     return ap, mrec, mprec
 
 
-def eval_final_results(result_stat, save_path, global_sort_detections, eval_epoch=None):
+def eval_final_results(result_stat, save_path, global_sort_detections=False, eval_epoch=None):
     dump_dict = {}
 
     ap_30, mrec_30, mpre_30 = calculate_ap(result_stat, 0.30, global_sort_detections)
     ap_50, mrec_50, mpre_50 = calculate_ap(result_stat, 0.50, global_sort_detections)
     ap_70, mrec_70, mpre_70 = calculate_ap(result_stat, 0.70, global_sort_detections)
 
-    dump_dict.update({'ap30': ap_30,
+    dump_dict.update({'ap_30': ap_30,
                       'ap_50': ap_50,
                       'ap_70': ap_70,
                       'mpre_50': mpre_50,
@@ -175,3 +175,4 @@ def eval_final_results(result_stat, save_path, global_sort_detections, eval_epoc
     print('The Average Precision at IOU 0.3 is %.2f, '
           'The Average Precision at IOU 0.5 is %.2f, '
           'The Average Precision at IOU 0.7 is %.2f' % (ap_30, ap_50, ap_70))
+    return ap_30, ap_50, ap_70

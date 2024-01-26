@@ -157,11 +157,9 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         self.visualize = visualize
         self.train = train
 
-        self.pre_processor = None
-        self.post_processor = None
         self.data_augmentor = DataAugmentor(params['data_augment'], train)
         self.pre_processor = build_preprocessor(params['preprocess'], train)
-        self.post_processor = post_processor.build_postprocessor(params['postprocess'], train)
+        self.post_processor = post_processor.build_postprocessor(params['postprocess'], dataset='opv2v', train=train)
 
         if 'train_params' not in params or 'max_cav' not in params['train_params']:
             self.max_cav = 7
@@ -279,7 +277,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         assert ego_id != -1
         assert len(ego_lidar_pose) > 0
 
-        pairwise_t_matrix = self.get_pairwise_transformation(base_data_dict, self.max_cav)
+        pairwise_t_matrix, img_pairwise_t_matrix = self.get_pairwise_transformation(base_data_dict, self.max_cav)
         
         agents_image_inputs = []
         processed_features = []
@@ -364,6 +362,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         processed_data_dict['ego'] = {
             'cav_num': len(processed_features),
             'lidar_pose': lidar_pose,
+            'img_pairwise_t_matrix': img_pairwise_t_matrix,
             'pairwise_t_matrix': pairwise_t_matrix,
             'spatial_correction_matrix': spatial_correction_matrix,
             'image_inputs': merged_image_inputs_dict,
@@ -440,7 +439,8 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
             data[cav_id]['params'] = self.reform_param(cav_content, ego_cav_content, timestamp_key, timestamp_key_delay, cur_ego_pose_flag)
             data[cav_id]['lidar_np'] = pcd_utils.pcd_to_np(cav_content[timestamp_key_delay]['lidar'])
             img_src = []
-            for image_path in cav_content[timestamp_key_delay]['camera']:
+            for idx in range(self.data_aug_conf['Ncams']):
+                image_path = cav_content[timestamp_key_delay]['camera'][idx]
                 img_src.append(Image.open(image_path))
             data[cav_id]['camera_data'] = img_src
         return data
@@ -498,6 +498,32 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         # todo: it may not be true for other dataset like DAIR-V2X and V2X-Sim
         time_delay = time_delay // 100
         return time_delay if self.async_flag else 0
+
+    def add_loc_noise(self, pose, xyz_std, ryp_std):
+        """
+        Add localization noise to the pose.
+
+        Parameters
+        ----------
+        pose : list
+            x,y,z,roll,yaw,pitch
+
+        xyz_std : float
+            std of the gaussian noise on xyz
+
+        ryp_std : float
+            std of the gaussian noise
+        """
+        np.random.seed(self.seed)
+        xyz_noise = np.random.normal(0, xyz_std, 3)
+        ryp_std = np.random.normal(0, ryp_std, 3)
+        noise_pose = [pose[0] + xyz_noise[0],
+                      pose[1] + xyz_noise[1],
+                      pose[2] + xyz_noise[2],
+                      pose[3],
+                      pose[4] + ryp_std[1],
+                      pose[5]]
+        return noise_pose
 
     def reform_param(self, cav_content, ego_content, timestamp_cur, timestamp_delay, cur_ego_pose_flag):
         """
@@ -559,9 +585,10 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         delay_params['gt_transformation_matrix'] = gt_transformation_matrix
         delay_params['spatial_correction_matrix'] = spatial_correction_matrix
         
-        camera_ids = ['camera0', 'camera1', 'camera2', 'camera3']
         camera_to_lidar_matrix, camera_intrinsic = [], []
-        for camera_id in camera_ids:
+        for idx in range(self.data_aug_conf['Ncams']):
+            camera_id = self.data_aug_conf['cams'][idx]
+            
             camera_pos = delay_params[camera_id]['cords']
             lidar_pose = delay_params['lidar_pose']
             camera2lidar = transformation_utils.x1_to_x2(camera_pos, lidar_pose)
@@ -669,6 +696,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         record_len = [] # used to record different scenario
         lidar_poses = []
 
+        img_pairwise_t_matrix_list = [] # pairwise transformation matrix for image
         pairwise_t_matrix_list = [] # pairwise transformation matrix
         processed_lidar_list = []
         image_inputs_list = []
@@ -695,6 +723,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
             ego_dict = batch[i]['ego']
             record_len.append(ego_dict['cav_num'])
             lidar_poses.append(ego_dict['lidar_pose'])
+            img_pairwise_t_matrix_list.append(ego_dict['img_pairwise_t_matrix'])
             pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
             processed_lidar_list.append(ego_dict['processed_lidar'])
             image_inputs_list.append(ego_dict['image_inputs']) # different cav_num, ego_dict['image_inputs'] is dict.
@@ -741,6 +770,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         prior_encoding = torch.stack([velocity, time_delay, infra], dim=-1).float()
         # (B, max_cav)
         pairwise_t_matrix = torch.from_numpy(np.array(pairwise_t_matrix_list))
+        img_pairwise_t_matrix = torch.from_numpy(np.array(img_pairwise_t_matrix_list))
 
         # object id is only used during inference, where batch size is 1.
         # so here we only get the first element.
@@ -757,6 +787,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
                 'prior_encoding': prior_encoding,
                 'spatial_correction_matrix': spatial_correction_matrix_list,
                 'pairwise_t_matrix': pairwise_t_matrix,
+                'img_pairwise_t_matrix': img_pairwise_t_matrix,
                 'lidar_pose': lidar_poses,
                 'ego_flag': ego_flag
             }
@@ -807,9 +838,9 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         gt_box_tensor = self.post_processor.generate_gt_bbx(data_dict)
 
         return pred_box_tensor, pred_score, gt_box_tensor
-
+    """
     def get_pairwise_transformation(self, base_data_dict, max_cav):
-        """
+        
         Get pair-wise transformation matrix accross different agents.
 
         Parameters
@@ -825,7 +856,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         pairwise_t_matrix : np.array
             The pairwise transformation matrix across each cav.
             shape: (L, L, 4, 4)
-        """
+        
         pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
 
         if self.proj_first:
@@ -851,3 +882,49 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
                     pairwise_t_matrix[i, j] = t_matrix
 
         return pairwise_t_matrix
+    """
+    def get_pairwise_transformation(self, base_data_dict, max_cav):
+        """
+        Get pair-wise transformation matrix accross different agents.
+
+        Parameters
+        ----------
+        base_data_dict : dict
+            Key : cav id, item: transformation matrix to ego, lidar points.
+
+        max_cav : int
+            The maximum number of cav, default 5
+
+        Return
+        ------
+        pairwise_t_matrix : np.array
+            The pairwise transformation matrix across each cav.
+            shape: (L, L, 4, 4)
+        """
+        identity_pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
+        pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
+
+        
+        # if lidar projected to ego first, then the pairwise matrix becomes identity
+        identity_pairwise_t_matrix[:, :] = np.identity(4)
+        
+        # save all transformation matrix in a list in order first.
+        t_list = []
+        for cav_id, cav_content in base_data_dict.items():
+            t_list.append(cav_content['params']['transformation_matrix'])
+
+        for i in range(len(t_list)):
+            for j in range(len(t_list)):
+                # identity matrix to self
+                if i == j:
+                    t_matrix = np.eye(4)
+                    pairwise_t_matrix[i, j] = t_matrix
+                    continue
+                # i->j: TiPi=TjPj, Tj^(-1)TiPi = Pj
+                t_matrix = np.dot(np.linalg.inv(t_list[j]), t_list[i])
+                pairwise_t_matrix[i, j] = t_matrix
+
+        if self.proj_first:
+            return identity_pairwise_t_matrix, pairwise_t_matrix
+        else:
+            return pairwise_t_matrix, pairwise_t_matrix

@@ -15,8 +15,7 @@ import numpy as np
 import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils, inference_utils
 from opencood.data_utils.datasets import build_dataset
-# from opencood.utils import eval_utils
-from opencood.utils import eval_utils_coalign as eval_utils
+from opencood.utils import eval_utils_where2comm as eval_utils
 from opencood.visualization import simple_vis
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -85,12 +84,12 @@ def main():
     rot_std_list = [0, 0.2, 0.4, 0.6]
     pos_mean_list = [0, 0, 0, 0]
     rot_mean_list = [0, 0, 0, 0]
-
+    
     pos_std_list = [0.6]
     rot_std_list = [0.6]
     pos_mean_list = [0]
     rot_mean_list = [0]
-
+    
     
     if opt.also_laplace:
         use_laplace_options = [False, True]

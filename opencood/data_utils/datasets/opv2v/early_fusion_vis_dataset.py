@@ -28,7 +28,7 @@ class EarlyFusionVisDataset(basedataset.BaseDataset):
         super(EarlyFusionVisDataset, self).__init__(params, visualize, train)
         self.pre_processor = build_preprocessor(params['preprocess'],
                                                 train)
-        self.post_processor = build_postprocessor(params['postprocess'], train)
+        self.post_processor = build_postprocessor(params['postprocess'], dataset='opv2v', train=train)
 
     def __getitem__(self, idx):
         base_data_dict = self.retrieve_base_data(idx)

@@ -119,7 +119,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         self.post_processor = None
         self.data_augmentor = DataAugmentor(params['data_augment'], train)
         self.pre_processor = build_preprocessor(params['preprocess'], train)
-        self.post_processor = post_processor.build_postprocessor(params['postprocess'], train)
+        self.post_processor = post_processor.build_postprocessor(params['postprocess'], dataset='opv2v', train=train)
 
         if 'train_params' not in params or 'max_cav' not in params['train_params']:
             self.max_cav = 7
@@ -595,7 +595,8 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         lidar_np = pcd_utils.mask_ego_points(lidar_np)
         
         xyzi_for_ego = deepcopy(lidar_np)
-        projected_lidar = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
+        if self.proj_first:
+            projected_lidar = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
 
         # project the lidar to ego space
         if self.proj_first:

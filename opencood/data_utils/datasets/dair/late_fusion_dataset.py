@@ -71,7 +71,8 @@ class LateFusionDatasetDAIR(Dataset):
                                                 train)
         self.post_processor = post_processor.build_postprocessor(
             params['postprocess'],
-            train)
+            dataset='dair',
+            train=train)
 
         if self.train:
             split_dir = params['root_dir']

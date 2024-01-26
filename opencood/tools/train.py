@@ -50,7 +50,8 @@ def main():
                             shuffle=True,
                             pin_memory=True,
                             drop_last=True,
-                            prefetch_factor=4)
+                            prefetch_factor=4
+                            )
     val_loader = DataLoader(opencood_validate_dataset,
                             batch_size=hypes['train_params']['batch_size'],
                             num_workers=4,
@@ -58,7 +59,8 @@ def main():
                             shuffle=True,
                             pin_memory=True,
                             drop_last=True,
-                            prefetch_factor=4)
+                            prefetch_factor=4
+                            )
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
@@ -86,7 +88,7 @@ def main():
         saved_path = opt.model_dir
         init_epoch, model = train_utils.load_saved_model(saved_path, model)
         lowest_val_epoch = init_epoch ###
-        scheduler = train_utils.setup_lr_schedular(hypes, optimizer, init_epoch=init_epoch)
+        scheduler = train_utils.setup_lr_schedular(hypes, optimizer, init_epoch=init_epoch, n_iter_per_epoch=len(train_loader))
     else:
         init_epoch = 0
         # if we train the model from scratch, we need to create a folder
@@ -94,7 +96,7 @@ def main():
         saved_path = train_utils.setup_train(hypes)
         print("output result save to: ", saved_path)
         # lr scheduler setup
-        scheduler = train_utils.setup_lr_schedular(hypes, optimizer)
+        scheduler = train_utils.setup_lr_schedular(hypes, optimizer, n_iter_per_epoch=len(train_loader))
     
     # record lowest validation loss checkpoint.
     lowest_val_loss = 1e5
@@ -123,7 +125,7 @@ def main():
             model.zero_grad()
             optimizer.zero_grad()
 
-            if 'scope' or 'how2comm' in hypes['name']:
+            if 'scope' in hypes['name'] or 'how2comm' in hypes['name']:
                 _batch_data = batch_data[0]
                 batch_data = train_utils.to_device(batch_data, device)
                 _batch_data = train_utils.to_device(_batch_data, device)
@@ -191,7 +193,7 @@ def main():
                     optimizer.zero_grad()
                     model.eval()
 
-                    if 'scope' or 'how2comm' in hypes['name']:
+                    if 'scope' in hypes['name'] or 'how2comm' in hypes['name']:
                         _batch_data = batch_data[0]
                         batch_data = train_utils.to_device(batch_data, device)
                         _batch_data = train_utils.to_device(_batch_data, device)

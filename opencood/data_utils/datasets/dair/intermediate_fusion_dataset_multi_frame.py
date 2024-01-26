@@ -74,7 +74,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # self.select_keypoint = params['select_kp'] if 'select_kp' in params else None
 
         self.pre_processor = pre_processor.build_preprocessor(params['preprocess'], train)
-        self.post_processor = post_processor.build_postprocessor(params['postprocess'], train)
+        self.post_processor = post_processor.build_postprocessor(params['postprocess'], dataset='dair', train=train)
         self.data_augmentor = augmentor.data_augmentor.DataAugmentor(params['data_augment'], train)
 
         # load dataset json file (info) and data path
