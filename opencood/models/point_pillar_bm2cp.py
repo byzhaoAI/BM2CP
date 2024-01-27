@@ -92,11 +92,13 @@ class MultiModalFusion(nn.Module):
         thres_map, _ = torch.min(thres_map, dim=2)  # collapse Z-axis, dim=4 size = [B, 1, Y, X]
         mask1, _ = torch.max(mask1, dim=2)  # collapse Z-axis, dim=4 size = [B, 1, Y, X]
         mask2, _ = torch.max(mask2, dim=2)  # collapse Z-axis, dim=4 size = [B, 1, Y, X]
-        
+
+        fused_voxel = fused_voxel.view(B,C*Z, Y, X)
+
         adapt_map = self.adapt_cls(self.adapt_conv(fused_voxel))
         thres_map = adapt_map * 0.5 + thres_map * 0.5
 
-        pc_dict['spatial_features'] = fused_voxel.view(B,C*Z, Y, X)
+        pc_dict['spatial_features'] = fused_voxel
         return pc_dict, thres_map, torch.min(mask, dim=2)[0], torch.stack([mask1, mask2])
     
 class PointPillarBM2CP(nn.Module):
