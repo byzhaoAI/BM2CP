@@ -91,7 +91,7 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
         return x  # x: 24 x 512 x 8 x 22
 
 
-    def forward(self, x, depth_maps, record_len):
+    def forward(self, x, depth_map, record_len):
         """
         Returns:
             log_depth : [B*N, D, fH, fW], or None if not used latter
@@ -103,7 +103,7 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
         # pts -> pixel coord + depth
         # coords_2d, depths, valid_mask = self._forward(coords_3d, intrinsic, extrinsic)
         _, _, oriH, oriW = x.shape
-        B, N, _, _ = depth_maps.shape
+        B, N, _, _ = depth_map.shape
         cum_sum_len = torch.cumsum(record_len, dim=0)
 
         x_img = x[:,:3:,:,:]    # origin x: (B*num(cav), C, H, W)
