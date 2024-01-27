@@ -103,8 +103,26 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
         # pts -> pixel coord + depth
         # coords_2d, depths, valid_mask = self._forward(coords_3d, intrinsic, extrinsic)
         _, _, oriH, oriW = x.shape
-        B, N, _, _ = depth_maps.shape
+        B, T, N, _, _ = depth_maps.shape
+        assert T == 2 # first for self-image and second for ego-image
         cum_sum_len = torch.cumsum(record_len, dim=0)
+
+        ego_index = 0
+        # get fused depth map for ego agent
+        depth_map = depth_maps[:,0,:,:,:]
+        for next_ego_index in cum_sum_len:
+            maps_for_ego = depth_maps[ego_index: next_ego_index,1,:,:,:]    # size= [sum(cav), num(camera), H, W]
+            max_value = torch.max(maps_for_ego)
+            maps_for_ego[maps_for_ego<0] = max_value + 1
+            maps_for_ego, _ = torch.min(maps_for_ego, dim=0)
+            maps_for_ego[maps_for_ego>max_value] = -1
+
+            ego_depth_mask = ((maps_for_ego[0]) > 0).long() # size= [num(camera), H, W]
+            # torch.count_nonzero(), tensor.numel()
+            depth_map[ego_index] = depth_map[ego_index]*ego_depth_mask + maps_for_ego*(1-ego_depth_mask)
+
+            # update index
+            ego_index += next_ego_index
 
         x_img = x[:,:3:,:,:]    # origin x: (B*num(cav), C, H, W)
         features = self.get_eff_features(x_img)     # 4x downscale feature: (B*num(cav), set_channels(e.g.256), H/4, W/4)

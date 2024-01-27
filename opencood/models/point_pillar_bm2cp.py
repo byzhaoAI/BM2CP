@@ -62,6 +62,9 @@ class MultiModalFusion(nn.Module):
         self.act = nn.ReLU(inplace=True)
         self.multifuse = nn.Conv3d(dim*2, dim, 1, 1, 0)
 
+        self.adapt_conv = nn.Conv2d(dim, 1, kernel_size=3, stride=1, padding=1)
+        self.adapt_cls = nn.Sigmoid()
+
     def forward(self, img_voxel, pc_dict):
         pc_voxel = pc_dict['spatial_features_3d']
         B, C, Z, Y, X = pc_voxel.shape
@@ -90,6 +93,9 @@ class MultiModalFusion(nn.Module):
         mask1, _ = torch.max(mask1, dim=2)  # collapse Z-axis, dim=4 size = [B, 1, Y, X]
         mask2, _ = torch.max(mask2, dim=2)  # collapse Z-axis, dim=4 size = [B, 1, Y, X]
         
+        adapt_map = self.adapt_cls(self.adapt_conv(fused_voxel))
+        thres_map = adapt_map * 0.5 + thres_map * 0.5
+
         pc_dict['spatial_features'] = fused_voxel.view(B,C*Z, Y, X)
         return pc_dict, thres_map, torch.min(mask, dim=2)[0], torch.stack([mask1, mask2])
     
