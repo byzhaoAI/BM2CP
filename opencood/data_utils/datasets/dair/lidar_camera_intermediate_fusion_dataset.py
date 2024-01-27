@@ -1,24 +1,22 @@
-# Modified from Yifan Lu by anonymous
+# -*- coding: utf-8 -*-
+# Author: Binyu Zhao <byzhao@stu.hit.edu.cn>
+# Author: Quanhao Li <quanhaoli2022@163.com> Yifan Lu <yifan_lu@sjtu.edu.cn>, 
+# Author: Yue Hu <18671129361@sjtu.edu.cn>
+# License: TDG-Attribution-NonCommercial-NoDistrib
+
 """
-hybrid lidar and camera dataset
+hybrid lidar and camera dataset class for intermediate fusion (DAIR-V2X)
 """
 import math
-from copy import deepcopy
-# import time
-# from concurrent.futures import process
+import copy
 import os
 import numpy as np
 import json
 import torch
-import cv2
-import bisect
 from PIL import Image
 from collections import OrderedDict
 
-from decimal import Decimal
-
 from opencood.data_utils import pre_processor, post_processor, augmentor
-from opencood.hypes_yaml import yaml_utils
 from opencood.utils import pcd_utils, box_utils, pose_utils, transformation_utils, camera_utils
 
 
@@ -74,7 +72,7 @@ def merge_features_to_dict(processed_feature_list, merge=None):
 
 class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
     """
-    This class is for intermediate fusion where each vehicle transmit the detection outputs to ego.
+    This class is for intermediate fusion where each vehicle transmit the deep features to ego.
     """
     def __init__(self, params, visualize, train=True):
         self.params = params
@@ -92,18 +90,12 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         self.kd_flag = params['kd_flag'] if "kd_flag" in params.keys() else False
         self.clip_pc = True if params['fusion']['args']['clip_pc'] else False
         # self.select_keypoint = params['select_kp'] if 'select_kp' in params else None
-        self.fg_mask = params['fg_mask'] if 'fg_mask' in params else False
-        self.use_gt_depth = True if ('camera_params' in params and params['camera_params']['use_depth_gt']) else False
-        self.use_fg_mask = True if ('use_fg_mask' in params['loss']['args'] and params['loss']['args']['use_fg_mask']) else False
-        # intermediate and supervise single
-        self.supervise_single = True if ('supervise_single' in params['train_params'] and params['train_params']['supervise_single']) else False
+        
+        self.data_aug_conf = params["fusion"]["args"]["data_aug_conf"]
 
         # pre- and post- precessor, data augmentor
-        self.grid_conf = params["fusion"]["args"]["grid_conf"]
-        self.depth_discre = camera_utils.depth_discretization(*self.grid_conf['ddiscr'], self.grid_conf['mode'])
-        self.data_aug_conf = params["fusion"]["args"]["data_aug_conf"]
         self.pre_processor = pre_processor.build_preprocessor(params['preprocess'], train)
-        self.post_processor = post_processor.build_postprocessor(params['postprocess'], train)
+        self.post_processor = post_processor.build_postprocessor(params['postprocess'], dataset='dair', train=train)
         self.data_augmentor = augmentor.data_augmentor.DataAugmentor(params['data_augment'], train)
 
         # load dataset json file (info) and data path
@@ -117,30 +109,25 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
         # save cooperative infra-vehicle pair path&offset data info
         self.coop_data = OrderedDict()
-        self.coop_datainfo = load_json(os.path.join(self.root_dir, 'cooperative/data_info.json'))
-        self.veh_datainfo = load_json(os.path.join(self.root_dir, 'vehicle-side/data_info.json'))
-        self.inf_datainfo = load_json(os.path.join(self.root_dir, 'infrastructure-side/data_info.json'))
-        
-        veh_image_path_list = [x['image_path'].split("/")[-1].replace(".jpg", "") for x in self.veh_datainfo]
-        inf_image_path_list = [x['image_path'].split("/")[-1].replace(".jpg", "") for x in self.inf_datainfo]
-        for clip_idx, clip_info in enumerate(self.coop_datainfo):
-            # vehicle image id = cooperative label id
-            veh_clip_id = clip_info['vehicle_image_path'].split("/")[-1].replace(".jpg", "")
-            inf_clip_id = clip_info['infrastructure_image_path'].split("/")[-1].replace(".jpg", "")
-            try:
-                veh_index = veh_image_path_list.index(veh_clip_id)
-                inf_index = inf_image_path_list.index(inf_clip_id)
-            except ValueError:
-                continue
-            self.coop_data[veh_clip_id] = [clip_idx, veh_index, inf_index]
+        coop_datainfo = load_json(os.path.join(self.root_dir, 'cooperative/data_info.json'))
+        for frame_info in coop_datainfo:
+            veh_frame_id = frame_info['vehicle_image_path'].split("/")[-1].replace(".jpg", "")
+            self.coop_data[veh_frame_id] = frame_info
 
     def __len__(self):
         return len(self.split_info)
 
     def __getitem__(self, idx):
+        # base_data_dict = {0: {'ego':{True}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_np':}},  # for vehicle
+        #                   1: {'ego':{False}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_np':}}}  # for infrastructure
         base_data_dict = self.retrieve_base_data(idx)
-        base_data_dict = pose_utils.add_noise_data_dict(base_data_dict,self.params['noise_setting'])
 
+        # base_data_dict = {0: {'ego':{True}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_np':, 'lidar_pose_clean':,}},  # for vehicle
+        #                   1: {'ego':{False}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_np':, 'lidar_pose_clean':,}}}  # for infrastructure
+        base_data_dict = pose_utils.add_noise_data_dict(base_data_dict, self.params['noise_setting'])
+        assert len(base_data_dict[0]['params']['lidar_pose']) > 0
+
+        # data prepared for each batch
         cav_id_list = []
         lidar_pose_list = []
         lidar_pose_clean_list = []
@@ -149,58 +136,40 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         processed_features = []
         projected_lidar_clean_list = []
 
-        image_timestamps = []
-        lidar_timestamps = []
-        
         object_id_stack = []
         object_id_stack_single_v = []
         object_id_stack_single_i = []
         object_stack = []
         object_stack_single_v = []
         object_stack_single_i = []
-        single_label_list = []
         
         if self.visualize:
             projected_lidar_stack = []
+        
 
-        # filtered cav within the communication range, then we can calculate get_pairwise_transformation
-        # too_far = []
+        # filter the agents that out of communicate range, sqrt(x**2+y**2)
+        filtered_cav_id = []
         for cav_id, selected_cav_base in base_data_dict.items():
-            # check if the cav is within the communication range with ego, sqrt(x**2+y**2)
             # distance = math.sqrt((selected_cav_base['params']['lidar_pose'][0] - ego_lidar_pose[0]) ** 2 + 
             #                      (selected_cav_base['params']['lidar_pose'][1] - ego_lidar_pose[1]) ** 2)
-
-            # if distance is too far, we will just skip this agent
             # if distance > self.params['comm_range']:
-            #     too_far.append(cav_id)
+            #     filtered_cav_id.append(cav_id)
             #     continue
 
             cav_id_list.append(cav_id)
             lidar_pose_list.append(selected_cav_base['params']['lidar_pose']) # 6dof pose
             lidar_pose_clean_list.append(selected_cav_base['params']['lidar_pose_clean'])
-
-        # for cav_id in too_far:
-        #     base_data_dict.pop(cav_id)
         
-        lidar_poses = np.array(lidar_pose_list).reshape(-1, 6)  # [N_cav, 6]
-        lidar_poses_clean = np.array(lidar_pose_clean_list).reshape(-1, 6)  # [N_cav, 6]
+        for cav_id in filtered_cav_id:
+            base_data_dict.pop(cav_id)
 
-        pairwise_t_matrix = self.get_pairwise_transformation(base_data_dict, self.max_cav)
-        
+
         # loop over all CAVs to process information
         for cav_id in cav_id_list:
-            # structure of selected_cav_processed:
-            # {
-            #     'image_inputs':{"imgs":, "intrins":, "extrins":, "rots":, "trans":, "post_rots":, "post_trans":}
-            #     'object_bbx_center':, 'object_bbx_mask':,
-            #     #'object_bbx_center_single':, 'object_ids_single':,
-            #     'object_ids':, 'projected_lidar':, 'processed_features':,
-            #     'transformation_matrix':, 'transformation_matrix_clean':,
-            #     'projected_lidar_clean': (optional for self.kd)
-            # }
-            selected_cav_processed = self.get_item_single_car(base_data_dict[cav_id], base_data_dict[0])
-
+            selected_cav_processed = self.get_item_single_car(base_data_dict[cav_id], base_data_dict[0]['params']['lidar_pose'], base_data_dict[0]['params']['lidar_pose_clean'])
             
+            # selected_cav_processed['object_bbx_center']: box for cooperative
+            # selected_cav_processed['object_bbx_center_single']: box for vehicle or infrastructure, is not equal to cooperative
             object_id_stack += selected_cav_processed['object_ids']
             object_stack.append(selected_cav_processed['object_bbx_center'])
             if cav_id == 0: # ego vehicle load cooperative label (id&bbx)
@@ -213,86 +182,67 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             processed_features.append(selected_cav_processed['processed_features'])
             agents_image_inputs.append(selected_cav_processed['image_inputs'])
 
-            # collect timestamps
-            lidar_timestamps.append(base_data_dict[cav_id]['params']['lidar_timestamp'])
-            image_timestamps.append(base_data_dict[cav_id]['params']['camera_timestamp'])
-
             if self.kd_flag:
                 projected_lidar_clean_list.append(selected_cav_processed['projected_lidar_clean'])
 
             if self.visualize:
                 projected_lidar_stack.append(selected_cav_processed['projected_lidar'])
-      
-            if self.supervise_single:
-                single_label_list.append(selected_cav_processed['single_label_dict'])
         
         # merge preprocessed features from different cavs into the same dict
+        # merged_feature_dict = {'voxel_features': shape=(voxel numbers, max points per voxel, (x,y,z,intensity)), 
+        #                        'voxel_coords': , 
+        #                        'voxel_num_points': }
         merged_feature_dict = merge_features_to_dict(processed_features)
         merged_image_inputs_dict = merge_features_to_dict(agents_image_inputs, merge='stack')
-        # "imgs": torch.Size([2, 1, 3, 360, 480])
 
         if self.kd_flag:    # for disconet knowledge distillation
             stack_lidar_np = np.vstack(projected_lidar_clean_list)
             stack_lidar_np = pcd_utils.mask_points_by_range(stack_lidar_np, self.params['preprocess']['cav_lidar_range'])
             stack_feature_processed = self.pre_processor.preprocess(stack_lidar_np)
-        
-        # exclude all repetitive objects    
-        unique_indices = [object_id_stack.index(x) for x in set(object_id_stack)]
-        object_stack = np.vstack(object_stack)
-        object_stack = object_stack[unique_indices]
-        # make sure bounding boxes across all frames have the same number
-        object_bbx_center = np.zeros((self.params['postprocess']['max_num'], 7))
-        mask = np.zeros(self.params['postprocess']['max_num'])
-        object_bbx_center[:object_stack.shape[0], :] = object_stack
-        mask[:object_stack.shape[0]] = 1
 
+        # generate the anchor boxes and target label
+        # object_stack: length=2*batch_size (1/2 valid), object_stack_single_v: length=batch_size, object_stack_single_i: length=batch_size
+        # label_dict = {'pos_equal_one': shape=(100, 252, 2),
+        #               'neg_equal_one': shape=(100, 252, 2),   # unused label item
+        #               'targets': shape=(100, 252, 14)
+        #               }
+        object_bbx_center, mask, object_id_stack = self.get_unique_label(object_stack, object_id_stack)
         object_bbx_center_single_v, mask_single_v, object_id_stack_single_v = self.get_unique_label(object_stack_single_v, object_id_stack_single_v)
         object_bbx_center_single_i, mask_single_i, object_id_stack_single_i = self.get_unique_label(object_stack_single_i, object_id_stack_single_i)
 
-        # generate the anchor boxes and generate targets label
         anchor_box = self.post_processor.generate_anchor_box()
-        label_dict = self.post_processor.generate_label(gt_box_center=object_bbx_center,anchors=anchor_box,mask=mask)
+        label_dict = self.post_processor.generate_label(gt_box_center=object_bbx_center, anchors=anchor_box, mask=mask)
         label_dict_single_v = self.post_processor.generate_label(gt_box_center=object_bbx_center_single_v, anchors=anchor_box, mask=mask_single_v)
         label_dict_single_i = self.post_processor.generate_label(gt_box_center=object_bbx_center_single_i, anchors=anchor_box, mask=mask_single_i)
         
-        # data dict per batch
-        processed_data_dict = {
-            'ego':{
-                'sample_idx': idx, 
-                'cav_id_list': cav_id_list,
-                'cav_num': len(agents_image_inputs),
-                'lidar_poses': lidar_poses,
-                'lidar_poses_clean': lidar_poses_clean,
-                'pairwise_t_matrix': pairwise_t_matrix,
-                'image_inputs': merged_image_inputs_dict,
-                'processed_lidar': merged_feature_dict,
-                
-                'image_timestamps': image_timestamps,
-                'lidar_timestamps': lidar_timestamps,
-                
-                'label_dict': label_dict,
-                'label_dict_single_v': label_dict_single_v,
-                'label_dict_single_i': label_dict_single_i,
 
-                'anchor_box': anchor_box,
-                'object_ids': [object_id_stack[i] for i in unique_indices],
-                'object_bbx_center': object_bbx_center,
-                'object_bbx_mask': mask,
+        # build dictionary for dataset output
+        processed_data_dict = OrderedDict()
+        processed_data_dict['ego'] = {
+            'sample_idx': idx, 
+            'cav_num': len(cav_id_list),
+            'cav_id_list': cav_id_list,
+            'pairwise_t_matrix': self.get_pairwise_transformation(base_data_dict, self.max_cav),    # get pairwise transformation, matrix[i, j] is i to j
+            'lidar_poses': np.array(lidar_pose_list).reshape(-1, 6),  # [N_cav, 6]
+            'lidar_poses_clean': np.array(lidar_pose_clean_list).reshape(-1, 6),  # [N_cav, 6],
+            'image_inputs': merged_image_inputs_dict,
+            'processed_lidar': merged_feature_dict,
 
-                'object_ids_single_v': object_id_stack_single_v,
-                'object_bbx_center_single_v': object_bbx_center_single_v,
-                'object_bbx_mask_single_v': mask_single_v,
-                'object_ids_single_i': object_id_stack_single_i,
-                'object_bbx_center_single_i': object_bbx_center_single_i,
-                'object_bbx_mask_single_i': mask_single_i,
-            }
+            'label_dict': label_dict,
+            'label_dict_single_v': label_dict_single_v,
+            'label_dict_single_i': label_dict_single_i,
+
+            'anchor_box': anchor_box,
+            'object_ids': object_id_stack,
+            'object_bbx_center': object_bbx_center,
+            'object_bbx_mask': mask,
+            'object_ids_single_v': object_id_stack_single_v,
+            'object_bbx_center_single_v': object_bbx_center_single_v,
+            'object_bbx_mask_single_v': mask_single_v,
+            'object_ids_single_i': object_id_stack_single_i,
+            'object_bbx_center_single_i': object_bbx_center_single_i,
+            'object_bbx_mask_single_i': mask_single_i,
         }
-        # group = processed_data_dict['ego']['image_inputs']
-        # print(group['imgs'].shape, group['intrins'].shape, group['rots'].shape, group['trans'].shape, group['post_rots'].shape, group['post_trans'].shape)
-
-        if self.supervise_single:   # generate single view GT label
-            single_label_dicts = self.post_processor.collate_batch(single_label_list)
-            processed_data_dict['ego'].update({"single_label_dict_torch": single_label_dicts})
 
         if self.kd_flag:
             processed_data_dict['ego'].update({'teacher_processed_lidar': stack_feature_processed})
@@ -301,6 +251,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             processed_data_dict['ego'].update({'origin_lidar': np.vstack(projected_lidar_stack)})
             processed_data_dict['ego'].update({'origin_lidar_v': projected_lidar_stack[0]})
             processed_data_dict['ego'].update({'origin_lidar_i': projected_lidar_stack[1]})
+
         return processed_data_dict
 
     def retrieve_base_data(self, idx):
@@ -317,39 +268,20 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         data : dict
             The dictionary contains loaded yaml params and lidar data for
             each cav.
-        
-        structure: {
-            0: {                    # for vehicle
-                'ego':{True}, 
-                'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_timestamp':,
-                           'camera_timestamp':, 'camera2lidar_matrix':, 'camera_intrinsic':
-                }, 
-                'lidar_np':, 
-                'camera_data':
-            },  
-            1: {                    # for infrastructure
-                'ego':{False}, 
-                'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_timestamp':,
-                           'camera_timestamp':, 'camera2lidar_matrix':, 'camera_intrinsic':
-                }, 
-                'lidar_np':, 
-                'camera_data':
-            }  
-        }
         """
-        # veh_clip_id: frame id of vehicle in train.json. e.g. "000010", "000011", "000013"
-        # index_group: coopration and individual info of infrastructure&vehicle. 
+        # veh_frame_id: frame id of vehicle in train.json. e.g. "000010", "000011", "000013"
+        # frame_info: img&point cloud of infrastructure&vehicle in vehicle info. 
         #       e.g. {"infrastructure_image_path": ..., 
         #             "infrastructure_pointcloud_path": ...,
         #             ...,
         #             "system_error_offset": {"delta_x": ..., "delta_y": ...}}
-        veh_clip_id = self.split_info[idx]
-        clip_idx, veh_idx, inf_idx = self.coop_data[veh_clip_id]
-        system_error_offset = self.coop_datainfo[clip_idx]["system_error_offset"]
+        veh_frame_id = self.split_info[idx]
+        frame_info = self.coop_data[veh_frame_id]
+        system_error_offset = frame_info["system_error_offset"]
 
         # build dictionary for each agent
-        #       e.g. {0: {'ego':{True}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_timestamp':, 'camera_timestamp':, 'camera2lidar_matrix':, 'camera_intrinsic':}, 'lidar_np':, 'camera_data':},  # for vehicle
-        #             1: {'ego':{False}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_timestamp':, 'camera_timestamp':, 'camera2lidar_matrix':, 'camera_intrinsic':}, 'lidar_np':, 'camera_data':}  # for infrastructure
+        #       e.g. {0: {'ego':{True}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_np':}},  # for vehicle
+        #             1: {'ego':{False}, 'params': {'vehicles':, 'lidar_pose':, 'vehicles_single':, 'lidar_np':}}  # for infrastructure
         #            }
         data = OrderedDict()
         data[0] = OrderedDict()
@@ -359,60 +291,66 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         data[1]['ego'] = False
         data[1]['params'] = OrderedDict()
 
+
         # vehicle-side
-        # load cooperative label once in vehicle side
-        data[0]['params']['vehicles'] = load_json(os.path.join(self.root_dir, self.coop_datainfo[clip_idx]['cooperative_label_path']))
-        # 6-DOF pose, coordinate system: lidar -> novatel -> world
-        lidar_to_novatel_json_file = load_json(os.path.join(self.root_dir,'vehicle-side', self.veh_datainfo[veh_idx]['calib_lidar_to_novatel_path']))
-        novatel_to_world_json_file = load_json(os.path.join(self.root_dir,'vehicle-side', self.veh_datainfo[veh_idx]['calib_novatel_to_world_path']))
-        transformation_matrix = transformation_utils.veh_side_rot_and_trans_to_trasnformation_matrix(lidar_to_novatel_json_file, novatel_to_world_json_file)
+        data[0]['params']['vehicles'] = load_json(os.path.join(self.root_dir, frame_info['cooperative_label_path']))
+        
+        # 6-DOF pose
+        lidar_to_novatel_json_file = load_json(os.path.join(self.root_dir,'vehicle-side/calib/lidar_to_novatel/'+str(veh_frame_id)+'.json'))
+        novatel_to_world_json_file = load_json(os.path.join(self.root_dir,'vehicle-side/calib/novatel_to_world/'+str(veh_frame_id)+'.json'))
+        transformation_matrix = transformation_utils.veh_side_rot_and_trans_to_trasnformation_matrix(lidar_to_novatel_json_file,novatel_to_world_json_file)
         data[0]['params']['lidar_pose'] = transformation_utils.tfm_to_pose(transformation_matrix)
+        
         # transformation matrix of camera to lidar, and camera intrinsic
-        lidar_to_camera_json_file = load_json(os.path.join(self.root_dir,'vehicle-side', self.veh_datainfo[veh_idx]['calib_lidar_to_camera_path']))
-        camera_intrinsic_json_file = load_json(os.path.join(self.root_dir,'vehicle-side', self.veh_datainfo[veh_idx]['calib_camera_intrinsic_path']))
+        lidar_to_camera_json_file = load_json(os.path.join(self.root_dir,'vehicle-side/calib/lidar_to_camera/'+str(veh_frame_id)+'.json'))
+        camera_intrinsic_json_file = load_json(os.path.join(self.root_dir,'vehicle-side/calib/camera_intrinsic/'+str(veh_frame_id)+'.json'))
         data[0]['params']['camera2lidar_matrix'] = np.linalg.inv(transformation_utils.rot_and_trans_to_trasnformation_matrix(lidar_to_camera_json_file))
         data[0]['params']['camera_intrinsic'] = camera_intrinsic_json_file['cam_K']
+
         # label in single view
-        data[0]['params']['vehicles_single'] = load_json(os.path.join(self.root_dir, 'vehicle-side', self.veh_datainfo[veh_idx]['label_lidar_std_path']))
-        # timestamp&data of lidar&image
-        data[0]['params']['lidar_timestamp'] = int(self.veh_datainfo[veh_idx]['pointcloud_timestamp'])
-        data[0]['params']['camera_timestamp'] = int(self.veh_datainfo[veh_idx]['image_timestamp'])
-        data[0]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,self.coop_datainfo[clip_idx]['vehicle_pointcloud_path']))
-        data[0]['camera_data'] = deepcopy(Image.open(os.path.join(self.root_dir,self.coop_datainfo[clip_idx]['vehicle_image_path'])))
+        vehicle_side_path = os.path.join(self.root_dir, 'vehicle-side/label/lidar/{}.json'.format(veh_frame_id))
+        data[0]['params']['vehicles_single'] = load_json(vehicle_side_path) 
+
+        # get (point cloud numpy & time)
+        data[0]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["vehicle_pointcloud_path"]))
+        data[0]['camera_data'] = Image.open(os.path.join(self.root_dir,frame_info['vehicle_image_path']))
         if self.clip_pc:
             data[0]['lidar_np'] = data[0]['lidar_np'][data[0]['lidar_np'][:,0] > 0]
 
         # infrastructure-side
-        # only load cooperative label once in vehicle side
+        # only load cooperative once in vehicle side
         data[1]['params']['vehicles'] = []
-        # 6-DOF pose, coordinate system: lidar -> world
-        virtuallidar_to_world_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side', self.inf_datainfo[inf_idx]['calib_virtuallidar_to_world_path']))
+        inf_frame_id = frame_info['infrastructure_image_path'].split("/")[-1].replace(".jpg", "")
+        
+        # 6-DOF pose
+        virtuallidar_to_world_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side/calib/virtuallidar_to_world/'+str(inf_frame_id)+'.json'))
         transformation_matrix1 = transformation_utils.inf_side_rot_and_trans_to_trasnformation_matrix(virtuallidar_to_world_json_file, system_error_offset)
         data[1]['params']['lidar_pose'] = transformation_utils.tfm_to_pose(transformation_matrix1)
+
         # transformation matrix of camera to lidar, and camera intrinsic
-        vlidar_to_camera_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side', self.inf_datainfo[inf_idx]['calib_virtuallidar_to_camera_path']))
-        camera_intrinsic_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side', self.inf_datainfo[inf_idx]['calib_camera_intrinsic_path']))
+        vlidar_to_camera_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side/calib/virtuallidar_to_camera/'+str(inf_frame_id)+'.json'))
+        camera_intrinsic_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side/calib/camera_intrinsic/'+str(inf_frame_id)+'.json'))
         data[1]['params']['camera2lidar_matrix'] = np.linalg.inv(transformation_utils.rot_and_trans_to_trasnformation_matrix(vlidar_to_camera_json_file))
         data[1]['params']['camera_intrinsic'] = camera_intrinsic_json_file['cam_K']
+
         # label in single view
-        data[1]['params']['vehicles_single'] = load_json(os.path.join(self.root_dir, 'infrastructure-side', self.inf_datainfo[inf_idx]['label_lidar_std_path']))
-        # timestamp&data of lidar&image
-        data[1]['params']['lidar_timestamp'] = int(self.inf_datainfo[inf_idx]['pointcloud_timestamp'])
-        data[1]['params']['camera_timestamp'] = int(self.inf_datainfo[inf_idx]['image_timestamp'])
-        data[1]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,self.coop_datainfo[clip_idx]["infrastructure_pointcloud_path"]))
-        data[1]['camera_data'] = deepcopy(Image.open(os.path.join(self.root_dir,self.coop_datainfo[clip_idx]['infrastructure_image_path'])))        
+        infra_side_path = os.path.join(self.root_dir, 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id))
+        data[1]['params']['vehicles_single'] = load_json(infra_side_path)
+
+        # get (point cloud numpy & time)
+        data[1]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["infrastructure_pointcloud_path"]))
+        data[1]['camera_data'] = Image.open(os.path.join(self.root_dir,frame_info['infrastructure_image_path']))
 
         return data
 
-    def get_item_single_car(self, selected_cav_base, ego_cav_base):
+    def get_item_single_car(self, selected_cav_base, ego_pose, ego_pose_clean):
         """
-        Process a single CAV's information for the train/test pipeline.
+        Project the lidar and bbx to ego space first, and then do clipping.
 
         Parameters
         ----------
         selected_cav_base : dict
             The dictionary contains a single CAV's raw information.
-            including 'params', 'camera_data'
         ego_pose : list, length 6
             The ego vehicle lidar pose under world coordinate.
         ego_pose_clean : list, length 6
@@ -422,54 +360,37 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         -------
         selected_cav_processed : dict
             The dictionary contains the cav's processed information.
+            {
+                'object_bbx_center': ,              # the exact number of object
+                'object_ids': ,
+                'object_bbx_center_single': ,       # the exact number of object
+                'object_ids_single': ,
+                'transformation_matrix': ,
+                'transformation_matrix_clean': , 
+                'processed_features': ,             # voxel feature data
+                'projected_lidar': ,                # raw point cloud data
+                'projected_lidar_clean':            # (optional) raw point cloud data
+             }
         """
-        # process camera data, adapted from https://github.com/nv-tlabs/lift-splat-shoot/blob/master/src/data.py
         
         # Transformation matrix, intrinsic(cam_K)
         camera_to_lidar_matrix = np.array(selected_cav_base['params']['camera2lidar_matrix']).astype(np.float32)
         # lidar_to_camera_matrix = np.array(selected_cav_base['params']['lidar2camera_matrix']).astype(np.float32)
         camera_intrinsic = np.array(selected_cav_base['params']["camera_intrinsic"]).reshape(3,3).astype(np.float32)
-
         # image and depth
         imgH, imgW = selected_cav_base["camera_data"].height, selected_cav_base["camera_data"].width
         img_src = [selected_cav_base["camera_data"]]
-        if self.use_gt_depth:
-            img_src.append(selected_cav_base["depth_data"])
 
-        if self.use_fg_mask:
-            _, _, fg_mask = camera_utils.coord_3d_to_2d(box_utils.boxes_to_corners_3d(object_bbx_center[:len(object_ids)], self.params['postprocess']['order']),camera_intrinsic,camera_to_lidar_matrix) 
-            img_src.append(Image.fromarray(np.array(fg_mask*255, dtype=np.uint8)))
-
-        # data augmentation
-        # resize, resize_dims, crop, flip, rotate = camera_utils.sample_augmentation(self.data_aug_conf, self.train)
-        # img_src, post_rot2, post_tran2 = camera_utils.img_transform(img_src, torch.eye(2), torch.zeros(2), resize=resize, resize_dims=resize_dims, crop=crop, flip=flip, rotate=rotate)
-        # for convenience, make augmentation matrices 3x3
         post_tran = torch.zeros(3)
-        #post_tran[:2] = post_tran2
         post_rot = torch.eye(3)
-        #post_rot[:2, :2] = post_rot2
 
-        # image resize
         resized_src = []
         for img in img_src:
             reH, reW = self.data_aug_conf['final_dim'][0], self.data_aug_conf['final_dim'][1]
-            resized_src.append(img.resize((reW, reH)))
+            _img = img.resize((reW, reH))
+            _img = camera_utils.normalize_img(_img)
+            resized_src.append(_img)
         img_src = resized_src
-
-        #=====================================
-        """
-        print('image shape: ', imgH, imgW)
-        plt.imshow(np.array(resized_src[0]))
-        plt.savefig('./image.png')
-        """
-        #=====================================
-
-        # decouple RGB and Depth
-        img_src[0] = camera_utils.normalize_img(img_src[0])
-        if self.use_gt_depth:
-            img_src[1] = camera_utils.img_to_tensor(img_src[1]) * 255
-        if self.use_fg_mask:
-            img_src[-1] = camera_utils.img_to_tensor(img_src[-1])
 
         selected_cav_processed = {
             "image_inputs":{
@@ -482,30 +403,21 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 "post_trans": post_tran.unsqueeze(0),
             }
         }
-        #group = selected_cav_processed['image_inputs']
-        #print(group['imgs'].shape, group['intrins'].shape, group['rots'].shape, group['trans'].shape, group['post_rots'].shape, group['post_trans'].shape)
 
-        # process lidar data
+        # calculate the transformation matrix, the transformation matrix from x1(other) to x2(ego)
+        transformation_matrix = transformation_utils.x1_to_x2(selected_cav_base['params']['lidar_pose'], ego_pose)
+        transformation_matrix_clean = transformation_utils.x1_to_x2(selected_cav_base['params']['lidar_pose_clean'], ego_pose_clean)
 
-        # calculate the transformation matrix
-        transformation_matrix = transformation_utils.x1_to_x2(selected_cav_base['params']['lidar_pose'], ego_cav_base['params']['lidar_pose']) # T_ego_cav
-        transformation_matrix_clean = transformation_utils.x1_to_x2(selected_cav_base['params']['lidar_pose_clean'], ego_cav_base['params']['lidar_pose_clean'])
-
-        object_bbx_center, object_bbx_mask, object_ids = self.post_processor.generate_object_center_dairv2x(selected_cav_base, selected_cav_base['params']['lidar_pose'])
+        # retrieve objects under ego coordinates. this is used to generate accurate GT bounding box.
+        object_bbx_center, object_bbx_mask, object_ids = self.post_processor.generate_object_center_dairv2x(selected_cav_base, ego_pose_clean)
         object_bbx_center_single, object_bbx_mask_single, object_ids_single = self.post_processor.generate_object_center_dairv2x_late_fusion(selected_cav_base)
-
-        # anchor box and then generate targets label single GT
-        # anchor_box = self.post_processor.generate_anchor_box()
-        # visibility_map = np.asarray(cv2.cvtColor(ego_cav_base["bev_visibility.png"], cv2.COLOR_BGR2GRAY))
-        # object_bbx_center_single, object_bbx_mask_single, object_ids_single = self.post_processor.generate_object_center_dairv2x(selected_cav_base, selected_cav_base['params']['lidar_pose'], visibility_map)
-        # label_dict_single = self.post_processor.generate_label(gt_box_center=object_bbx_center_single, anchors=anchor_box, mask=object_bbx_mask_single)
-        # selected_cav_processed.update({"single_label_dict": label_dict_single})
-
+        
+        # filter lidar. remove the lidar points of the ego vehicle itself.
         lidar_np = selected_cav_base['lidar_np']
         lidar_np = pcd_utils.shuffle_points(lidar_np)
-        # Remove the lidar points of the ego vehicle itself.
         lidar_np = pcd_utils.mask_ego_points(lidar_np)
-        # project the lidar to ego space, x,y,z in ego space
+        # project the lidar to ego space. only x,y,z
+        # this function transforms cloud coordinate (x,y,z) to ego coordinate (x,y,z), preserve intensity information always
         projected_lidar = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
 
         if self.proj_first:
@@ -515,29 +427,26 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         lidar_np = pcd_utils.mask_points_by_range(lidar_np, self.params['preprocess']['cav_lidar_range'])
 
         # point cloud -> voxel feature
-        processed_lidar = self.pre_processor.preprocess(lidar_np)
+        # processed_features: shape=(voxel numbers, max points per voxel, (x,y,z,intensity))
+        processed_features = self.pre_processor.preprocess(lidar_np)
 
-        # update dictionary
-        selected_cav_processed.update(
-            {
-                'object_bbx_center': object_bbx_center[object_bbx_mask == 1],
-                'object_bbx_mask': object_bbx_mask,
-                'object_bbx_center_single': object_bbx_center_single[object_bbx_mask_single == 1],
-                'object_ids_single': object_ids_single,
-                "object_ids": object_ids,
-                'projected_lidar': projected_lidar,
-                'processed_features': processed_lidar,
-                'transformation_matrix': transformation_matrix,
-                'transformation_matrix_clean': transformation_matrix_clean
-            }
-        )
+        selected_cav_processed.update({
+            'object_bbx_center': object_bbx_center[object_bbx_mask == 1],
+            'object_ids': object_ids,
+            'object_bbx_center_single': object_bbx_center_single[object_bbx_mask_single == 1],
+            'object_ids_single': object_ids_single,
+            'transformation_matrix': transformation_matrix,
+            'transformation_matrix_clean': transformation_matrix_clean,
+            'processed_features': processed_features,
+            'projected_lidar': projected_lidar,
+        })
 
         if self.kd_flag:
             lidar_np_clean = pcd_utils.mask_ego_points(selected_cav_base['lidar_np']) # copy.deepcopy(lidar_np)
             projected_lidar_clean = box_utils.project_points_by_matrix_torch(lidar_np_clean[:, :3], transformation_matrix_clean)
             lidar_np_clean[:, :3] = projected_lidar_clean
             lidar_np_clean = pcd_utils.mask_points_by_range(lidar_np_clean, self.params['preprocess']['cav_lidar_range'])
-            selected_cav_processed.update({"projected_lidar_clean": lidar_np_clean})
+            selected_cav_processed.update({"projected_lidar_clean": lidar_np_clean})    # point cloud data
 
         return selected_cav_processed
 
@@ -611,9 +520,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         processed_lidar_list = []
         image_inputs_list = []
 
-        image_timestamps_list = []
-        lidar_timestamps_list = []
-
         label_dict_list = []
         label_dict_list_single_v = []
         label_dict_list_single_i = []
@@ -628,11 +534,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         object_ids_single_i = []
         object_bbx_center_single_i = []
         object_bbx_mask_single_i = []
-
-        if self.supervise_single:
-            pos_equal_one_single = []
-            neg_equal_one_single = []
-            targets_single = []
         
         if self.kd_flag:
             teacher_processed_lidar_list = []
@@ -651,11 +552,8 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             lidar_pose_list.append(ego_dict['lidar_poses'])     # shape = np.ndarray [N,6-DOF]
             lidar_pose_clean_list.append(ego_dict['lidar_poses_clean'])
             pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
-            processed_lidar_list.append(ego_dict['processed_lidar'])
-            image_inputs_list.append(ego_dict['image_inputs']) # different cav_num, ego_dict['image_inputs'] is dict.
-
-            lidar_timestamps_list.append(ego_dict['lidar_timestamps'])
-            image_timestamps_list.append(ego_dict['image_timestamps'])
+            processed_lidar_list.append(ego_dict['processed_lidar']) # different cav_num, ego_dict['processed_lidar'] is list.
+            image_inputs_list.append(ego_dict['image_inputs'])
 
             label_dict_list.append(ego_dict['label_dict'])
             label_dict_list_single_v.append(ego_dict['label_dict_single_v'])
@@ -671,12 +569,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             object_ids_single_i.append(ego_dict['object_ids_single_i'])
             object_bbx_center_single_i.append(ego_dict['object_bbx_center_single_i'])
             object_bbx_mask_single_i.append(ego_dict['object_bbx_mask_single_i'])
-            
-            ### 2022.10.10 single gt ####
-            if self.supervise_single:
-                pos_equal_one_single.append(ego_dict['single_label_dict_torch']['pos_equal_one'])
-                neg_equal_one_single.append(ego_dict['single_label_dict_torch']['neg_equal_one'])
-                targets_single.append(ego_dict['single_label_dict_torch']['targets'])
 
             if self.kd_flag:
                 teacher_processed_lidar_list.append(ego_dict['teacher_processed_lidar'])
@@ -704,14 +596,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # processed_lidar_torch_dict ={'voxel_features': shape=(sum(batch size*2), points per voxel, (x,y,z,intensity)), ...
         merged_feature_dict = merge_features_to_dict(processed_lidar_list)
         processed_lidar_torch_dict = self.pre_processor.collate_batch(merged_feature_dict)
-        # {"image_inputs": 
-        #   {image: [sum(record_len), Ncam, C, H, W]}
-        # }
         merged_image_inputs_dict = merge_features_to_dict(image_inputs_list, merge='cat')
-
-        # emsemble timestamps
-        lidar_timestamps_list = torch.from_numpy(np.array(lidar_timestamps_list))
-        image_timestamps_list = torch.from_numpy(np.array(image_timestamps_list))
 
         # the sum of cav number per batch
         record_len = torch.from_numpy(np.array(record_len, dtype=int))
@@ -733,8 +618,8 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         label_torch_dict_single_v['record_len'] = record_len
         label_torch_dict_single_i['pairwise_t_matrix'] = pairwise_t_matrix
         label_torch_dict_single_i['record_len'] = record_len
-        # object id is only used during inference, where batch size is 1.
-        # so here we only get the first element.
+
+        # object id is only used during inference, where batch size is 1. so here we only get the first element of list.
         output_dict = {
             'ego': {
                 'object_bbx_center': object_bbx_center,
@@ -749,11 +634,8 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 'object_bbx_mask_single_i': object_bbx_mask_single_i,
                 'object_ids_single_i': object_ids_single_i[0],
                 'label_dict_single_i': label_torch_dict_single_i,
-
                 'processed_lidar': processed_lidar_torch_dict,
                 'image_inputs': merged_image_inputs_dict,
-                'lidar_timestamp': lidar_timestamps_list,
-                'image_timestamp': image_timestamps_list,
                 'record_len': record_len,
                 'pairwise_t_matrix': pairwise_t_matrix,
                 'lidar_pose_clean': lidar_pose_clean,
@@ -778,18 +660,8 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             origin_lidar_i = torch.from_numpy(origin_lidar_i)
             output_dict['ego'].update({'origin_lidar_i': origin_lidar_i})
 
-        ### 2022.10.10 single gt ####
-        if self.supervise_single:
-            output_dict['ego'].update({
-                "label_dict_single" : 
-                    {"pos_equal_one": torch.cat(pos_equal_one_single, dim=0),
-                     "neg_equal_one": torch.cat(neg_equal_one_single, dim=0),
-                     "targets": torch.cat(targets_single, dim=0)}
-            })
-
-        output_dict['ego'].update({
-            "mode": 'train'
-        })
+        if self.params['preprocess']['core_method'] == 'SpVoxelPreprocessor' and (output_dict['ego']['processed_lidar']['voxel_coords'][:, 0].max().int().item() + 1) != record_len.sum().int().item():
+            return None
 
         return output_dict
 
@@ -813,10 +685,6 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         output_dict['ego'].update({
             "sample_idx": batch[0]['ego']['sample_idx'],
             "cav_id_list": batch[0]['ego']['cav_id_list']
-        })
-
-        output_dict['ego'].update({
-            "mode": 'test'
         })
 
         return output_dict
