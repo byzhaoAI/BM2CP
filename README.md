@@ -7,7 +7,7 @@
 
 
 ## Updates
-- 2024/01/27 Support OPV2V dataset. Support SCOPE(ICCV2023). Fix bugs in fusion dataset that cause abnormal performance in presence of pose error. 
+- 2024/01/28 Support OPV2V dataset. Support SCOPE(ICCV2023). Fix bugs in fusion dataset that cause abnormal performance in presence of pose error. 
 - 2023/11/30 First version.
 
 
