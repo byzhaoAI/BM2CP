@@ -9,12 +9,13 @@ __all__ = {
 }
 
 
-def build_postprocessor(anchor_cfg, train):
+def build_postprocessor(anchor_cfg, dataset, train):
     process_method_name = anchor_cfg['core_method']
     assert process_method_name in ['VoxelPostprocessor']
     anchor_generator = __all__[process_method_name](
         anchor_params=anchor_cfg,
-        train=train
+        dataset=dataset,
+        train=train,
     )
 
     return anchor_generator

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Author: Runsheng Xu <rxx3386@ucla.edu>, Yue Hu <18671129361@sjtu.edu.cn>, Binyu Zhao <byzhao@stu.hit.edu.cn>
+# Author: Runsheng Xu <rxx3386@ucla.edu>, Yue Hu <18671129361@sjtu.edu.cn>
 # License: TDG-Attribution-NonCommercial-NoDistrib
 
 
@@ -19,8 +19,6 @@ from tensorboardX import SummaryWriter
 import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils
 from opencood.data_utils.datasets import build_dataset
-
-#from icecream import ic
 
 
 def train_parser():
@@ -47,18 +45,22 @@ def main():
 
     train_loader = DataLoader(opencood_train_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=0,
+                            num_workers=4,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
-                            drop_last=True)
+                            drop_last=True,
+                            prefetch_factor=4
+                            )
     val_loader = DataLoader(opencood_validate_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=0,
+                            num_workers=4,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
-                            drop_last=True)
+                            drop_last=True,
+                            prefetch_factor=4
+                            )
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
@@ -86,7 +88,7 @@ def main():
         saved_path = opt.model_dir
         init_epoch, model = train_utils.load_saved_model(saved_path, model)
         lowest_val_epoch = init_epoch ###
-        scheduler = train_utils.setup_lr_schedular(hypes, optimizer, init_epoch=init_epoch)
+        scheduler = train_utils.setup_lr_schedular(hypes, optimizer, init_epoch=init_epoch, n_iter_per_epoch=len(train_loader))
     else:
         init_epoch = 0
         # if we train the model from scratch, we need to create a folder
@@ -94,7 +96,7 @@ def main():
         saved_path = train_utils.setup_train(hypes)
         print("output result save to: ", saved_path)
         # lr scheduler setup
-        scheduler = train_utils.setup_lr_schedular(hypes, optimizer)
+        scheduler = train_utils.setup_lr_schedular(hypes, optimizer, n_iter_per_epoch=len(train_loader))
     
     # record lowest validation loss checkpoint.
     lowest_val_loss = 1e5
@@ -122,19 +124,28 @@ def main():
             model.train()
             model.zero_grad()
             optimizer.zero_grad()
-            batch_data = train_utils.to_device(batch_data, device)
-            # case1 : late fusion train --> only ego needed,
-            # and ego is (random) selected
-            # case2 : early fusion train --> all data projected to ego
-            # case3 : intermediate fusion --> ['ego']['processed_lidar']
-            # becomes a list, which containing all data from other cavs
-            # as well
-            batch_data['ego']['epoch'] = epoch
-            output_dict = model(batch_data['ego'])
-            #print(output_dict.keys())
-            # first argument is always your output dictionary,
-            # second argument is always your label dictionary.
-            final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
+
+            if 'scope' in hypes['name'] or 'how2comm' in hypes['name']:
+                _batch_data = batch_data[0]
+                batch_data = train_utils.to_device(batch_data, device)
+                _batch_data = train_utils.to_device(_batch_data, device)
+
+                ouput_dict = model(batch_data)
+                final_loss = criterion(ouput_dict, _batch_data['ego']['label_dict'])
+            else:
+                batch_data = train_utils.to_device(batch_data, device)
+                # case1 : late fusion train --> only ego needed,
+                # and ego is (random) selected
+                # case2 : early fusion train --> all data projected to ego
+                # case3 : intermediate fusion --> ['ego']['processed_lidar']
+                # becomes a list, which containing all data from other cavs
+                # as well
+                batch_data['ego']['epoch'] = epoch
+                output_dict = model(batch_data['ego'])
+                #print(output_dict.keys())
+                # first argument is always your output dictionary,
+                # second argument is always your label dictionary.
+                final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
             if False:
             #if len(output_dict) > 2:
                 single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
@@ -182,11 +193,21 @@ def main():
                     optimizer.zero_grad()
                     model.eval()
 
-                    batch_data = train_utils.to_device(batch_data, device)
-                    batch_data['ego']['epoch'] = epoch
-                    ouput_dict = model(batch_data['ego'])
+                    if 'scope' in hypes['name'] or 'how2comm' in hypes['name']:
+                        _batch_data = batch_data[0]
+                        batch_data = train_utils.to_device(batch_data, device)
+                        _batch_data = train_utils.to_device(_batch_data, device)
+                        
+                        ouput_dict = model(batch_data)
+                        final_loss = criterion(ouput_dict, _batch_data['ego']['label_dict'])
 
-                    final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
+                    else:
+                        batch_data = train_utils.to_device(batch_data, device)
+                        batch_data['ego']['epoch'] = epoch
+                        ouput_dict = model(batch_data['ego'])
+
+                        final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
+                    
                     if False:
                     #if len(output_dict) > 2:
                         single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
@@ -201,6 +222,8 @@ def main():
                                         round_loss_v = criterion(output_dict, batch_data['ego']['label_dict'], prefix='_v{}'.format(round_id))
                                         final_loss += round_loss_v
                     valid_ave_loss.append(final_loss.item())
+                    torch.cuda.empty_cache()
+
             print("valid_ave_loss: ", valid_ave_loss)
             valid_ave_loss = statistics.mean(valid_ave_loss)
             print('At epoch %d, the validation loss is %f' % (epoch, valid_ave_loss))
@@ -211,11 +234,10 @@ def main():
                 f.write(msg)
 
             # lowest val loss
-            if valid_ave_loss < lowest_val_loss:
-                lowest_val_loss = valid_ave_loss
-                best_saved_path = os.path.join(saved_path, 'net_epoch_bestval_at{}.pth'.format(epoch+1))
-                torch.save(model.state_dict(), best_saved_path)
-
+            # if valid_ave_loss < lowest_val_loss:
+            #     lowest_val_loss = valid_ave_loss
+            #     best_saved_path = os.path.join(saved_path, 'net_epoch_bestval_at{}.pth'.format(epoch+1))
+            #     torch.save(model.state_dict(), best_saved_path)
 
         scheduler.step(epoch)
 

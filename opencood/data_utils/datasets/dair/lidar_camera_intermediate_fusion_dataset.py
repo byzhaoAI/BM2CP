@@ -5,7 +5,7 @@
 # License: TDG-Attribution-NonCommercial-NoDistrib
 
 """
-Dataset class for intermediate fusion (DAIR-V2X)
+hybrid lidar and camera dataset class for intermediate fusion (DAIR-V2X)
 """
 import math
 import copy
@@ -13,10 +13,11 @@ import os
 import numpy as np
 import json
 import torch
+from PIL import Image
 from collections import OrderedDict
 
 from opencood.data_utils import pre_processor, post_processor, augmentor
-from opencood.utils import pcd_utils, box_utils, pose_utils, transformation_utils
+from opencood.utils import pcd_utils, box_utils, pose_utils, transformation_utils, camera_utils
 
 
 def load_json(path):
@@ -25,7 +26,7 @@ def load_json(path):
     return data
 
 
-def merge_features_to_dict(processed_feature_list):
+def merge_features_to_dict(processed_feature_list, merge=None):
     """
     Merge the preprocessed features from different cavs to the same
     dictionary.
@@ -35,6 +36,7 @@ def merge_features_to_dict(processed_feature_list):
     processed_feature_list : list
         A list of dictionary containing all processed features from
         different cavs.
+    merge : "stack" or "cat". used for images
 
     Returns
     -------
@@ -46,21 +48,29 @@ def merge_features_to_dict(processed_feature_list):
 
     for i in range(len(processed_feature_list)):
         for feature_name, feature in processed_feature_list[i].items():
-            # print(i, feature_name, type(feature))
 
             if feature_name not in merged_feature_dict:
                 merged_feature_dict[feature_name] = []
-            
-            # merged_feature_dict['coords'] = [f1,f2,f3,f4]
             if isinstance(feature, list):
                 merged_feature_dict[feature_name] += feature
             else:
-                merged_feature_dict[feature_name].append(feature)
+                merged_feature_dict[feature_name].append(feature) # merged_feature_dict['coords'] = [f1,f2,f3,f4]
 
+    # stack them
+    # it usually happens when merging cavs images -> v.shape = [N, Ncam, C, H, W]
+    # cat them
+    # it usually happens when merging batches cav images -> v is a list [(N1+N2+...Nn, Ncam, C, H, W))]
+    if merge=='stack': 
+        for feature_name, features in merged_feature_dict.items():
+            merged_feature_dict[feature_name] = torch.stack(features, dim=0)
+    elif merge=='cat':
+        for feature_name, features in merged_feature_dict.items():
+            merged_feature_dict[feature_name] = torch.cat(features, dim=0)
+    
     return merged_feature_dict
 
 
-class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
+class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
     """
     This class is for intermediate fusion where each vehicle transmit the deep features to ego.
     """
@@ -80,10 +90,12 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         self.kd_flag = params['kd_flag'] if "kd_flag" in params.keys() else False
         self.clip_pc = True if params['fusion']['args']['clip_pc'] else False
         # self.select_keypoint = params['select_kp'] if 'select_kp' in params else None
+        
+        self.data_aug_conf = params["fusion"]["args"]["data_aug_conf"]
 
         # pre- and post- precessor, data augmentor
         self.pre_processor = pre_processor.build_preprocessor(params['preprocess'], train)
-        self.post_processor = post_processor.build_postprocessor(params['postprocess'], train)
+        self.post_processor = post_processor.build_postprocessor(params['postprocess'], dataset='dair', train=train)
         self.data_augmentor = augmentor.data_augmentor.DataAugmentor(params['data_augment'], train)
 
         # load dataset json file (info) and data path
@@ -119,6 +131,8 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         cav_id_list = []
         lidar_pose_list = []
         lidar_pose_clean_list = []
+
+        agents_image_inputs = []
         processed_features = []
         projected_lidar_clean_list = []
 
@@ -166,6 +180,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 object_stack_single_i.append(selected_cav_processed['object_bbx_center_single'])
 
             processed_features.append(selected_cav_processed['processed_features'])
+            agents_image_inputs.append(selected_cav_processed['image_inputs'])
 
             if self.kd_flag:
                 projected_lidar_clean_list.append(selected_cav_processed['projected_lidar_clean'])
@@ -178,7 +193,8 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         #                        'voxel_coords': , 
         #                        'voxel_num_points': }
         merged_feature_dict = merge_features_to_dict(processed_features)
-        
+        merged_image_inputs_dict = merge_features_to_dict(agents_image_inputs, merge='stack')
+
         if self.kd_flag:    # for disconet knowledge distillation
             stack_lidar_np = np.vstack(projected_lidar_clean_list)
             stack_lidar_np = pcd_utils.mask_points_by_range(stack_lidar_np, self.params['preprocess']['cav_lidar_range'])
@@ -209,6 +225,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             'pairwise_t_matrix': self.get_pairwise_transformation(base_data_dict, self.max_cav),    # get pairwise transformation, matrix[i, j] is i to j
             'lidar_poses': np.array(lidar_pose_list).reshape(-1, 6),  # [N_cav, 6]
             'lidar_poses_clean': np.array(lidar_pose_clean_list).reshape(-1, 6),  # [N_cav, 6],
+            'image_inputs': merged_image_inputs_dict,
             'processed_lidar': merged_feature_dict,
 
             'label_dict': label_dict,
@@ -284,25 +301,37 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         transformation_matrix = transformation_utils.veh_side_rot_and_trans_to_trasnformation_matrix(lidar_to_novatel_json_file,novatel_to_world_json_file)
         data[0]['params']['lidar_pose'] = transformation_utils.tfm_to_pose(transformation_matrix)
         
+        # transformation matrix of camera to lidar, and camera intrinsic
+        lidar_to_camera_json_file = load_json(os.path.join(self.root_dir,'vehicle-side/calib/lidar_to_camera/'+str(veh_frame_id)+'.json'))
+        camera_intrinsic_json_file = load_json(os.path.join(self.root_dir,'vehicle-side/calib/camera_intrinsic/'+str(veh_frame_id)+'.json'))
+        data[0]['params']['camera2lidar_matrix'] = np.linalg.inv(transformation_utils.rot_and_trans_to_trasnformation_matrix(lidar_to_camera_json_file))
+        data[0]['params']['camera_intrinsic'] = camera_intrinsic_json_file['cam_K']
+
         # label in single view
         vehicle_side_path = os.path.join(self.root_dir, 'vehicle-side/label/lidar/{}.json'.format(veh_frame_id))
         data[0]['params']['vehicles_single'] = load_json(vehicle_side_path) 
 
         # get (point cloud numpy & time)
         data[0]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["vehicle_pointcloud_path"]))
+        data[0]['camera_data'] = Image.open(os.path.join(self.root_dir,frame_info['vehicle_image_path']))
         if self.clip_pc:
             data[0]['lidar_np'] = data[0]['lidar_np'][data[0]['lidar_np'][:,0] > 0]
-        
 
         # infrastructure-side
         # only load cooperative once in vehicle side
         data[1]['params']['vehicles'] = []
-
-        # 6-DOF pose
         inf_frame_id = frame_info['infrastructure_image_path'].split("/")[-1].replace(".jpg", "")
+        
+        # 6-DOF pose
         virtuallidar_to_world_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side/calib/virtuallidar_to_world/'+str(inf_frame_id)+'.json'))
         transformation_matrix1 = transformation_utils.inf_side_rot_and_trans_to_trasnformation_matrix(virtuallidar_to_world_json_file, system_error_offset)
-        data[1]['params']['lidar_pose'] = transformation_utils.tfm_to_pose(transformation_matrix1)   
+        data[1]['params']['lidar_pose'] = transformation_utils.tfm_to_pose(transformation_matrix1)
+
+        # transformation matrix of camera to lidar, and camera intrinsic
+        vlidar_to_camera_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side/calib/virtuallidar_to_camera/'+str(inf_frame_id)+'.json'))
+        camera_intrinsic_json_file = load_json(os.path.join(self.root_dir,'infrastructure-side/calib/camera_intrinsic/'+str(inf_frame_id)+'.json'))
+        data[1]['params']['camera2lidar_matrix'] = np.linalg.inv(transformation_utils.rot_and_trans_to_trasnformation_matrix(vlidar_to_camera_json_file))
+        data[1]['params']['camera_intrinsic'] = camera_intrinsic_json_file['cam_K']
 
         # label in single view
         infra_side_path = os.path.join(self.root_dir, 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id))
@@ -310,6 +339,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
         # get (point cloud numpy & time)
         data[1]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["infrastructure_pointcloud_path"]))
+        data[1]['camera_data'] = Image.open(os.path.join(self.root_dir,frame_info['infrastructure_image_path']))
 
         return data
 
@@ -342,6 +372,38 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 'projected_lidar_clean':            # (optional) raw point cloud data
              }
         """
+        
+        # Transformation matrix, intrinsic(cam_K)
+        camera_to_lidar_matrix = np.array(selected_cav_base['params']['camera2lidar_matrix']).astype(np.float32)
+        # lidar_to_camera_matrix = np.array(selected_cav_base['params']['lidar2camera_matrix']).astype(np.float32)
+        camera_intrinsic = np.array(selected_cav_base['params']["camera_intrinsic"]).reshape(3,3).astype(np.float32)
+        # image and depth
+        imgH, imgW = selected_cav_base["camera_data"].height, selected_cav_base["camera_data"].width
+        img_src = [selected_cav_base["camera_data"]]
+
+        post_tran = torch.zeros(3)
+        post_rot = torch.eye(3)
+
+        resized_src = []
+        for img in img_src:
+            reH, reW = self.data_aug_conf['final_dim'][0], self.data_aug_conf['final_dim'][1]
+            _img = img.resize((reW, reH))
+            _img = camera_utils.normalize_img(_img)
+            resized_src.append(_img)
+        img_src = resized_src
+
+        selected_cav_processed = {
+            "image_inputs":{
+                "imgs": torch.stack(img_src, dim=0), # [N(cam), 3or4, H, W]
+                "intrins": torch.from_numpy(camera_intrinsic).unsqueeze(0),
+                "extrins": torch.from_numpy(camera_to_lidar_matrix).unsqueeze(0),
+                "rots": torch.from_numpy(camera_to_lidar_matrix[:3, :3]).unsqueeze(0),  # R_wc, we consider world-coord is the lidar-coord
+                "trans": torch.from_numpy(camera_to_lidar_matrix[:3, 3]).unsqueeze(0),  # T_wc
+                "post_rots": post_rot.unsqueeze(0),
+                "post_trans": post_tran.unsqueeze(0),
+            }
+        }
+
         # calculate the transformation matrix, the transformation matrix from x1(other) to x2(ego)
         transformation_matrix = transformation_utils.x1_to_x2(selected_cav_base['params']['lidar_pose'], ego_pose)
         transformation_matrix_clean = transformation_utils.x1_to_x2(selected_cav_base['params']['lidar_pose_clean'], ego_pose_clean)
@@ -368,7 +430,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # processed_features: shape=(voxel numbers, max points per voxel, (x,y,z,intensity))
         processed_features = self.pre_processor.preprocess(lidar_np)
 
-        selected_cav_processed = {
+        selected_cav_processed.update({
             'object_bbx_center': object_bbx_center[object_bbx_mask == 1],
             'object_ids': object_ids,
             'object_bbx_center_single': object_bbx_center_single[object_bbx_mask_single == 1],
@@ -377,7 +439,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             'transformation_matrix_clean': transformation_matrix_clean,
             'processed_features': processed_features,
             'projected_lidar': projected_lidar,
-        }
+        })
 
         if self.kd_flag:
             lidar_np_clean = pcd_utils.mask_ego_points(selected_cav_base['lidar_np']) # copy.deepcopy(lidar_np)
@@ -456,14 +518,16 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         lidar_pose_clean_list = []
         pairwise_t_matrix_list = [] # pairwise transformation matrix
         processed_lidar_list = []
+        image_inputs_list = []
 
         label_dict_list = []
         label_dict_list_single_v = []
-        label_dict_list_single_i = []        
+        label_dict_list_single_i = []
 
         object_ids = []
         object_bbx_center = []
         object_bbx_mask = []
+
         object_ids_single_v = []
         object_bbx_center_single_v = []
         object_bbx_mask_single_v = []
@@ -483,12 +547,13 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # emsemble batch data
         for i in range(len(batch)):
             ego_dict = batch[i]['ego']
-            
+
             record_len.append(ego_dict['cav_num'])
             lidar_pose_list.append(ego_dict['lidar_poses'])     # shape = np.ndarray [N,6-DOF]
-            lidar_pose_clean_list.append(ego_dict['lidar_poses_clean'])            
+            lidar_pose_clean_list.append(ego_dict['lidar_poses_clean'])
             pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
             processed_lidar_list.append(ego_dict['processed_lidar']) # different cav_num, ego_dict['processed_lidar'] is list.
+            image_inputs_list.append(ego_dict['image_inputs'])
 
             label_dict_list.append(ego_dict['label_dict'])
             label_dict_list_single_v.append(ego_dict['label_dict_single_v'])
@@ -497,6 +562,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             object_ids.append(ego_dict['object_ids'])
             object_bbx_center.append(ego_dict['object_bbx_center'])
             object_bbx_mask.append(ego_dict['object_bbx_mask'])
+
             object_ids_single_v.append(ego_dict['object_ids_single_v'])
             object_bbx_center_single_v.append(ego_dict['object_bbx_center_single_v'])
             object_bbx_mask_single_v.append(ego_dict['object_bbx_mask_single_v'])
@@ -511,7 +577,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 origin_lidar.append(ego_dict['origin_lidar'])
                 origin_lidar_v.append(ego_dict['origin_lidar_v'])
                 origin_lidar_i.append(ego_dict['origin_lidar_i'])
-        
+
         # convert to numpy, (batch_size, max_num, 7)
         object_bbx_center = torch.from_numpy(np.array(object_bbx_center))
         object_bbx_mask = torch.from_numpy(np.array(object_bbx_mask))
@@ -530,6 +596,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # processed_lidar_torch_dict ={'voxel_features': shape=(sum(batch size*2), points per voxel, (x,y,z,intensity)), ...
         merged_feature_dict = merge_features_to_dict(processed_lidar_list)
         processed_lidar_torch_dict = self.pre_processor.collate_batch(merged_feature_dict)
+        merged_image_inputs_dict = merge_features_to_dict(image_inputs_list, merge='cat')
 
         # the sum of cav number per batch
         record_len = torch.from_numpy(np.array(record_len, dtype=int))
@@ -568,6 +635,7 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 'object_ids_single_i': object_ids_single_i[0],
                 'label_dict_single_i': label_torch_dict_single_i,
                 'processed_lidar': processed_lidar_torch_dict,
+                'image_inputs': merged_image_inputs_dict,
                 'record_len': record_len,
                 'pairwise_t_matrix': pairwise_t_matrix,
                 'lidar_pose_clean': lidar_pose_clean,

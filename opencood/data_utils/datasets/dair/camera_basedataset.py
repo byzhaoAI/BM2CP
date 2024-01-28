@@ -96,7 +96,7 @@ class CameraBaseDataset(Dataset):
 
         # pre- and post- precessor
         self.pre_processor = build_preprocessor(params["preprocess"], train)
-        self.post_processor = build_postprocessor(params["postprocess"], train)
+        self.post_processor = build_postprocessor(params["postprocess"], dataset='dair', train=train)
 
         # 
         self.fg_mask = params['fg_mask'] if 'fg_mask' in params else False           

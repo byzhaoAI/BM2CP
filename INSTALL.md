@@ -99,3 +99,20 @@ python opencood/pcdet_utils/setup.py build_ext --inplace
 ```
 CUDA_HOME=/usr/local/cuda-11.1/ python opencood/pcdet_utils/setup.py build_ext --inplace
 ```
+
+### 6. *(Option) for training and testing SCOPE&How2comm
+```
+# install basic library of deformable attention
+git clone https://github.com/TuSimple/centerformer.git
+cd centerformer
+
+# install requirements
+pip install -r requirements.txt
+sh setup.sh
+```
+
+##### if there is a problem about cv2:
+```
+# module 'cv2' has no attribute 'gapi_wip_gst_GStreamerPipeline'
+pip install opencv-python install "opencv-python-headless<4.3"
+```

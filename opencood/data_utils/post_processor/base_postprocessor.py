@@ -31,9 +31,10 @@ class BasePostprocessor(object):
         coordinates (1, 7)
     """
 
-    def __init__(self, anchor_params, train=True):
+    def __init__(self, anchor_params, dataset, train=True):
         self.params = anchor_params
         self.bbx_dict = {}
+        self.dataset = dataset
         self.train = train
 
     def generate_anchor_box(self):
@@ -71,7 +72,10 @@ class BasePostprocessor(object):
         for cav_id, cav_content in data_dict.items():
             # used to project gt bounding box to ego space
             # object_bbx_center is clean.
-            transformation_matrix = cav_content['transformation_matrix_clean']
+            if self.dataset == 'dair':
+                transformation_matrix = cav_content['transformation_matrix_clean']
+            else:
+                transformation_matrix = cav_content['transformation_matrix']
 
             object_bbx_center = cav_content['object_bbx_center']
             object_bbx_mask = cav_content['object_bbx_mask']
@@ -86,6 +90,7 @@ class BasePostprocessor(object):
                 box_utils.project_box3d(object_bbx_corner.float(),
                                         transformation_matrix)
             gt_box3d_list.append(projected_object_bbx_corner)
+
             # append the corresponding ids
             object_id_list += object_ids
 
@@ -97,8 +102,11 @@ class BasePostprocessor(object):
         gt_box3d_tensor = gt_box3d_list[gt_box3d_selected_indices]
 
         # filter the gt_box to make sure all bbx are in the range
-        mask = \
-            box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor, self.params['gt_range'])
+        #if self.dataset == 'dair':
+        #    mask = box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor, self.params['gt_range'])
+        #else:
+        #    mask = box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor, self.params['anchor_args']['cav_lidar_range'])
+        mask = box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor, self.params['anchor_args']['cav_lidar_range'])
         gt_box3d_tensor = gt_box3d_tensor[mask, :, :]
 
         return gt_box3d_tensor
@@ -205,7 +213,7 @@ class BasePostprocessor(object):
         object_ids : list
             Length is number of bbx in current sample.
         """
-        from opencood.data_utils.datasets import GT_RANGE_OPV2V
+        # from opencood.data_utils.datasets import GT_RANGE_OPV2V
 
         tmp_object_dict = {}
         for cav_content in cav_contents:
@@ -218,7 +226,9 @@ class BasePostprocessor(object):
                                         output_dict,
                                         reference_lidar_pose,
                                         filter_range,
-                                        self.params['order'])
+                                        self.params['order'],
+                                        self.dataset
+                                        )
 
         object_np = np.zeros((self.params['max_num'], 7))
         mask = np.zeros(self.params['max_num'])

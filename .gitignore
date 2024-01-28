@@ -144,6 +144,7 @@ dataset_link
 data_vis/
 icp/vis_result
 icp/npy_result
+opencood/logs
 opencood/visualization/draw_fancy/result*
 opencood/visualization/draw_fancy/dataset*
 opencood/visualization/draw_box_align/vis_result

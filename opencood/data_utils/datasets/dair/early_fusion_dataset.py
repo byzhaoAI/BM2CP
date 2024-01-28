@@ -15,7 +15,7 @@ import torch
 from torch.utils.data import DataLoader
 import json
 from torch.utils.data import Dataset
-from opencood.data_utils.datasets.basedataset import BaseDataset
+from opencood.data_utils.datasets.dair.basedataset import BaseDataset
 import opencood.utils.pcd_utils as pcd_utils
 from opencood.utils import box_utils
 from opencood.data_utils.post_processor import build_postprocessor
@@ -72,7 +72,7 @@ class EarlyFusionDatasetDAIR(Dataset):
             self.select_keypoint = None
 
         self.pre_processor = build_preprocessor(params['preprocess'], train)
-        self.post_processor = build_postprocessor(params['postprocess'], train)
+        self.post_processor = build_postprocessor(params['postprocess'], dataset='dair', train=train)
 
         if self.train:
             split_dir = params['root_dir']

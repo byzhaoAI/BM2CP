@@ -3,16 +3,36 @@
 # Author: Runsheng Xu <rxx3386@ucla.edu>
 # License: TDG-Attribution-NonCommercial-NoDistrib
 
-from opencood.data_utils.datasets.early_fusion_dataset import EarlyFusionDatasetDAIR
-from opencood.data_utils.datasets.intermediate_fusion_dataset import IntermediateFusionDatasetDAIR
-from opencood.data_utils.datasets.late_fusion_dataset import LateFusionDatasetDAIR
-from opencood.data_utils.datasets.lidar_camera_intermediate_fusion_dataset_v2 import LiDARCameraIntermediateFusionDatasetDAIR as LiDARCameraIntermediateFusionDatasetDAIRV2
+from opencood.data_utils.datasets.opv2v.early_fusion_dataset import EarlyFusionDataset as EarlyFusionDatasetOPV2V
+from opencood.data_utils.datasets.opv2v.intermediate_fusion_dataset import IntermediateFusionDataset as IntermediateFusionDatasetOPV2V
+from opencood.data_utils.datasets.opv2v.intermediate_fusion_dataset_v2 import IntermediateFusionDatasetV2 as IntermediateFusionDatasetOPV2V_V2
+from opencood.data_utils.datasets.opv2v.intermediate_fusion_dataset_multi_frame import IntermediateFusionDataset as IntermediateFusionDatasetOPV2V_MULTI
+from opencood.data_utils.datasets.opv2v.late_fusion_dataset import LateFusionDataset as LateFusionDatasetOPV2V
+from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V
+from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset_v2 import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V_V2
+
+from opencood.data_utils.datasets.dair.early_fusion_dataset import EarlyFusionDatasetDAIR
+from opencood.data_utils.datasets.dair.intermediate_fusion_dataset import IntermediateFusionDatasetDAIR
+from opencood.data_utils.datasets.dair.intermediate_fusion_dataset_multi_frame import IntermediateFusionDatasetDAIR as IntermediateFusionDatasetDAIR_MULTI
+from opencood.data_utils.datasets.dair.late_fusion_dataset import LateFusionDatasetDAIR
+from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset_v0 import LiDARCameraIntermediateFusionDatasetDAIR
+from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset_v2 import LiDARCameraIntermediateFusionDatasetDAIR as LiDARCameraIntermediateFusionDatasetDAIR_V2
 
 __all__ = {
+    'EarlyFusionDatasetOPV2V': EarlyFusionDatasetOPV2V,
+    'IntermediateFusionDatasetOPV2V': IntermediateFusionDatasetOPV2V,
+    'IntermediateFusionDatasetOPV2V_V2': IntermediateFusionDatasetOPV2V_V2,
+    'IntermediateFusionDatasetOPV2V_Multi': IntermediateFusionDatasetOPV2V_MULTI,
+    'LateFusionDatasetOPV2V': LateFusionDatasetOPV2V,
+    'LiDARCameraIntermediateFusionDatasetOPV2V': LiDARCameraIntermediateFusionDatasetOPV2V,
+    'LiDARCameraIntermediateFusionDatasetOPV2VV2': LiDARCameraIntermediateFusionDatasetOPV2V_V2,
+
     'EarlyFusionDatasetDAIR': EarlyFusionDatasetDAIR,
     'IntermediateFusionDatasetDAIR': IntermediateFusionDatasetDAIR,
-    'LiDARCameraIntermediateFusionDatasetDAIRV2': LiDARCameraIntermediateFusionDatasetDAIRV2,
-    'LateFusionDatasetDAIR': LateFusionDatasetDAIR
+    'IntermediateFusionDatasetDAIR_Multi': IntermediateFusionDatasetDAIR_MULTI,
+    'LateFusionDatasetDAIR': LateFusionDatasetDAIR,
+    'LiDARCameraIntermediateFusionDatasetDAIR': LiDARCameraIntermediateFusionDatasetDAIR,
+    'LiDARCameraIntermediateFusionDatasetDAIRV2': LiDARCameraIntermediateFusionDatasetDAIR_V2,
 }
 
 # the final range for evaluation

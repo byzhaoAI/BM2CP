@@ -6,12 +6,19 @@
 **Abstract:** Collaborative perception enables agents to share complementary perceptual information with nearby agents. This can significantly benefit the perception performance and alleviate the issues of single-view perception, such as occlusion and sparsity. Most proposed approaches mainly focus on single modality (especially LiDAR), and not fully exploit the superiority of multi-modal perception. We propose an collaborative perception paradigm, BM2CP, which employs LiDAR and camera to achieve efficient multi-modal perception. BM2CP utilizes LiDAR-guided modal fusion, cooperative depth generation and modality-guided intermediate fusion to acquire deep interactions between modalities and agents. Moreover, it is capable to cope with the special case that one of the sensors is unavailable. Extensive experiments validate that it outperforms the state-of-the-art methods with 50X lower communication volumes in real-world autonomous driving scenarios.
 
 
+## Updates
+- 2024/01/27 Support OPV2V dataset. Support SCOPE(ICCV2023). Fix bugs in fusion dataset that cause abnormal performance in presence of pose error. 
+- 2023/11/30 First version.
+
+
 ## Features
 
 - Dataset Support
-  - [x] DAIR-V2X
-  - [ ] OPV2V
+  - [x] OPV2V
+  - [ ] V2XSet
   - [ ] V2X-Sim 2.0
+  - [x] DAIR-V2X
+  - [ ] V2V4Real (Only LiDAR released by Official)
 
 - Spconv Support
   - [x] 1.2.1
@@ -27,8 +34,9 @@
     - [x] [CoBEVT (CoRL2022)](https://arxiv.org/abs/2207.02202)
     - [x] [Where2comm (NeurIPS2022)](https://arxiv.org/abs/2209.12836)
     - [x] [CoAlign (ICRA2023)](https://arxiv.org/abs/2211.07214)
-    - [x] [BM2CP (CoRL2023)](https://arxiv.org/abs/2310.14702)
-    - [ ] SCOPE (ICCV2023) Coming soon ...
+    - [x] [BM2CP (CoRL2023)](https://arxiv.org/abs/2310.14702) (Coming soon for OPV2V dataset)
+    - [x] [SCOPE (ICCV2023)](https://arxiv.org/abs/2307.13929)
+    - [ ] How2comm (NeurIPS2023) Coming soon ...
 
 - Visualization
   - [x] BEV visualization
@@ -37,8 +45,10 @@
 
 ## Quick Start
 #### Download dataset 
-##### 1. DAIR-V2X
-1. Download raw data of [DAIR-V2X.](https://thudair.baai.ac.cn/cooptest)
+##### 1. OPV2V
+Download raw data of [OPV2V](https://drive.google.com/drive/folders/1dkDeHlwOVbmgXcDazZvO6TFEZ6V_7WUu) relseased by Official.
+##### 2. DAIR-V2X
+1. Download raw data of [DAIR-V2X](https://thudair.baai.ac.cn/cooptest).
 2. Download complemented annotation from [Yifan Lu](https://github.com/yifanlu0227/CoAlign).
 
 #### Install
@@ -78,11 +88,12 @@ Before you run the following command, first make sure the `validation_dir` in co
 refers to the testing dataset path, e.g. `opv2v_data_dumping/test`.
 
 ```python
-python opencood/tools/inference.py --model_dir ${CHECKPOINT_FOLDER} --fusion_method ${FUSION_STRATEGY} --save_vis ${default False}
+python opencood/tools/inference.py --model_dir ${CHECKPOINT_FOLDER} --fusion_method ${FUSION_STRATEGY} --eval_epoch ${epoch_number} --save_vis ${default False}
 ```
 Arguments Explanation:
 - `model_dir`: the path to your saved model.
 - `fusion_method`: indicate the fusion strategy, currently support 'early', 'late', 'intermediate', 'no'(indicate no fusion, single agent), 'intermediate_with_comm'(adopt intermediate fusion and output the communication cost).
+- `eval_epoch`: int. Choose to inferece which epoch.
 - `save_vis`: bool. Wether to save the visualization result.
 
 The evaluation results  will be dumped in the model directory.
@@ -98,6 +109,8 @@ Thank for the dataset and code support by [DerrickXu](https://github.com/Derrick
 
 Thanks for the insightful previous works in cooperative perception field.
 
+### Methods
+
 **V2VNet: Vehicle-to-vehicle communication for joint perception and prediction** 
 *ECCV20* [[Paper]](https://arxiv.org/abs/2008.07519) 
 
@@ -107,12 +120,6 @@ Thanks for the insightful previous works in cooperative perception field.
 **Learning Distilled Collaboration Graph for Multi-Agent Perception** 
 *NeurIPS21* [[Paper]](https://arxiv.org/abs/2111.00643) [[Code]](https://github.com/DerrickXuNu/OpenCOOD)
 
-**V2X-Sim: A Virtual Collaborative Perception Dataset and Benchmark for Autonomous Driving** 
-*RAL21* [[Paper]](https://arxiv.org/abs/2111.00643) [[Website]](https://ai4ce.github.io/V2X-Sim/)[[Code]](https://github.com/ai4ce/V2X-Sim)
-
-**OPV2V: An Open Benchmark Dataset and Fusion Pipeline for Perception with Vehicle-to-Vehicle Communication** 
-*ICRA2022* [[Paper]](https://arxiv.org/abs/2109.07644) [[Website]](https://mobility-lab.seas.ucla.edu/opv2v/) [[Code]](https://github.com/DerrickXuNu/OpenCOOD)
-
 **V2X-ViT: Vehicle-to-Everything Cooperative Perception with Vision Transformer** *ECCV2022* [[Paper]](https://arxiv.org/abs/2203.10638) [[Code]](https://github.com/DerrickXuNu/v2x-vit) [[Talk]](https://course.zhidx.com/c/MmQ1YWUyMzM1M2I3YzVlZjE1NzM=)
 
 **Self-Supervised Collaborative Scene Completion: Towards Task-Agnostic Multi-Robot Perception** 
@@ -121,6 +128,15 @@ Thanks for the insightful previous works in cooperative perception field.
 **CoBEVT: Cooperative Bird's Eye View Semantic Segmentation with Sparse Transformers** *CoRL2022* [[Paper]](https://arxiv.org/abs/2207.02202) [[Code]](https://github.com/DerrickXuNu/CoBEVT)
 
 **Where2comm: Communication-Efficient Collaborative Perception via Spatial Confidence Maps** *NeurIPS2022* [[Paper]](https://arxiv.org/abs/2209.12836) [[Code]](https://github.com/MediaBrain-SJTU/Where2comm)
+
+**Spatio-Temporal Domain Awareness for Multi-Agent Collaborative Perception** *ICCV2023* [[Paper]](https://arxiv.org/abs/2307.13929)[[Code]](https://github.com/starfdu1418/SCOPE)
+### Datasets
+
+**OPV2V: An Open Benchmark Dataset and Fusion Pipeline for Perception with Vehicle-to-Vehicle Communication** 
+*ICRA2022* [[Paper]](https://arxiv.org/abs/2109.07644) [[Website]](https://mobility-lab.seas.ucla.edu/opv2v/) [[Code]](https://github.com/DerrickXuNu/OpenCOOD)
+
+**V2X-Sim: A Virtual Collaborative Perception Dataset and Benchmark for Autonomous Driving** 
+*RAL21* [[Paper]](https://arxiv.org/abs/2111.00643) [[Website]](https://ai4ce.github.io/V2X-Sim/)[[Code]](https://github.com/ai4ce/V2X-Sim)
 
 **DAIR-V2X: A Large-Scale Dataset for Vehicle-Infrastructure Cooperative 3D Object Detection** *CVPR2022* [[Paper]](https://arxiv.org/abs/2204.05575) [[Website]](https://thudair.baai.ac.cn/index) [[Code]](https://github.com/AIR-THU/DAIR-V2X)
 
