@@ -281,12 +281,12 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         
         agents_image_inputs = []
         processed_features = []
+        object_stack = []
         object_id_stack = []
         # prior knowledge for time delay correction and indicating data type (V2V vs V2i)
         velocity = []
         time_delay = []
         infra = []
-        object_stack = []
         spatial_correction_matrix = []
 
         if self.visualize:
@@ -588,14 +588,14 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         camera_to_lidar_matrix, camera_intrinsic = [], []
         for idx in range(self.data_aug_conf['Ncams']):
             camera_id = self.data_aug_conf['cams'][idx]
-            
+
             camera_pos = delay_params[camera_id]['cords']
             lidar_pose = delay_params['lidar_pose']
             camera2lidar = transformation_utils.x1_to_x2(camera_pos, lidar_pose)
             extrinsic = delay_params[camera_id]['extrinsic']
             # print(camera2lidar, extrinsic)
             # camera_to_lidar_matrix.append(delay_params[camera_id]['extrinsic'])
-            camera_to_lidar_matrix.append(camera2lidar)
+            camera_to_lidar_matrix.append(extrinsic)
             camera_intrinsic.append(delay_params[camera_id]['intrinsic'])
 
         delay_params['camera2lidar_matrix'] = camera_to_lidar_matrix
@@ -649,7 +649,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
                 "rots": torch.from_numpy(camera_to_lidar_matrix[:, :3, :3]),  # R_wc, we consider world-coord is the lidar-coord
                 "trans": torch.from_numpy(camera_to_lidar_matrix[:, :3, 3]),  # T_wc
                 "post_rots": post_rot,  # 4*3
-                "post_trans": post_tran,    # 1*4*3*3
+                "post_trans": post_tran,    # 4*3*3
             }
         }
         # for key, value in selected_cav_processed['image_inputs'].items():
