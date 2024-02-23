@@ -117,17 +117,11 @@ model:
     # add decoder
 
 loss:
-  core_method: point_pillar_combined_loss # point_pillar_loss
-  args:   
-    point_pillar_loss:
-      cls_weight: 1.0
-      reg: 2.0
+  core_method: point_pillar_loss
+  args:
+    cls_weight: 1.0
+    reg: 2.0
 
-#loss:
-#  core_method: point_pillar_loss
-#  args:
-#    cls_weight: 1.0
-#    reg: 2.0
 optimizer:
   core_method: Adam
   lr: 0.002
