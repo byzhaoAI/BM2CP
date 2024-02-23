@@ -274,6 +274,9 @@ class Where2comm(nn.Module):
                 ############ 1. Communication (Mask the features) #########
                 if i==0:
                     if self.communication:
+                        if x.shape[-1] != rm.shape[-1]:
+                            rm = F.interpolate(rm, size=x.shape[2:], mode='bilinear', align_corners=False)
+                    
                         batch_confidence_maps = self.regroup(rm, record_len)
                         batch_x = self.regroup(x, record_len)
 
