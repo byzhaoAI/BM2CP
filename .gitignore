@@ -155,3 +155,15 @@ box_align_items
 stage1_boxes/
 bash_script/
 opencood/logs
+pypcd
+data/
+
+vis_raw/
+opencood/visualization/vis_noise*
+opencood/visualization/croped_image/
+opencood/visualization/compare_image/
+opencood/visualization/crop_image.py
+opencood/visualization/noise*
+depth*
+image*
+proj_image*
