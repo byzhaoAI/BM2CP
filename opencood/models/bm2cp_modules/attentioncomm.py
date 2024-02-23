@@ -47,6 +47,7 @@ class ScaledDotProductAttention(nn.Module):
         context = torch.bmm(attn, value)
         return context
 
+"""
 class AttenFusion(nn.Module):
     def __init__(self, feature_dim):
         super(AttenFusion, self).__init__()
@@ -58,6 +59,22 @@ class AttenFusion(nn.Module):
         x = self.att(x, x, x)
         x = x.permute(1, 2, 0).view(cav_num, C, H, W)[0]  # C, W, H before
         return x
+"""
+
+class AttenFusion(nn.Module):
+    def __init__(self, feature_dim):
+        super(AttenFusion, self).__init__()
+        self.att = ScaledDotProductAttention(feature_dim)
+
+    def forward(self, query, x):
+        cav_num, C, H, W = x.shape
+        query = query.view(1, C, -1).permute(2, 0, 1) #  (H*W, cav_num, C), perform self attention on each pixel.
+        x = x.view(cav_num, C, -1).permute(2, 0, 1) #  (H*W, cav_num, C), perform self attention on each pixel.
+        # torch.Size([12600, 2, 64]) torch.Size([25200, 2, 64])
+        x = self.att(query, x, x)
+        x = x.permute(1, 2, 0).view(1, C, H, W)[0]  # C, W, H before
+        return x
+
 
 def communication(batch_confidence_maps, threshold_maps, record_len, pairwise_t_matrix):
     # batch_confidence_maps:[(L1, H, W), (L2, H, W), ...]
@@ -92,6 +109,7 @@ def communication(batch_confidence_maps, threshold_maps, record_len, pairwise_t_
 
     communication_rates = sum(communication_rates) / B
     communication_masks = torch.concat(communication_masks, dim=0)
+    # print(communication_masks.shape, torch.count_nonzero(communication_masks))
     return {}, communication_masks, communication_rates
 
 
@@ -158,15 +176,15 @@ class AttenComm(nn.Module):
             for i in range(self.num_levels):
                 x = feats[i] if with_resnet else backbone.blocks[i](x)
 
-                if x.shape != thres_map.shape:
-                    level_thres_map = F.interpolate(thres_map, size=x.shape[2:], mode='bilinear')
-                else:
-                    level_thres_map = thres_map
+                if x.shape[-1] != rm.shape[-1]:
+                    rm = F.interpolate(rm, size=x.shape[2:], mode='bilinear', align_corners=False)
+                if x.shape[-1] != thres_map.shape[-1]:
+                    thres_map = F.interpolate(thres_map, size=x.shape[2:], mode='bilinear', align_corners=False)
 
                 if i==0:
                     batch_confidence_maps = self.regroup(rm, record_len)
-                    batch_level_thres_map = self.regroup(level_thres_map, record_len)
-                    _, communication_masks, communication_rates = communication(batch_confidence_maps, batch_level_thres_map, record_len, pairwise_t_matrix)
+                    batch_thres_map = self.regroup(thres_map, record_len)
+                    _, communication_masks, communication_rates = communication(batch_confidence_maps, batch_thres_map, record_len, pairwise_t_matrix)
                     x = x * communication_masks
 
                 # split x:[(L1, C, H, W), (L2, C, H, W), ...]
@@ -182,10 +200,11 @@ class AttenComm(nn.Module):
                     t_matrix = pairwise_t_matrix[b][:N, :N, :, :]
                     node_features = batch_node_features[b]
                     C, H, W = node_features.shape[1:]
-                    neighbor_feature = warp_affine_simple(node_features,
-                                                    t_matrix[0, :, :, :],
-                                                    (H, W))
-                    x_fuse.append(self.fuse_modules[i](neighbor_feature))
+                    neighbor_feature = warp_affine_simple(node_features, t_matrix[0, :, :, :], (H, W))
+                    
+                    query = neighbor_feature[0].unsqueeze(0)
+                    x_fuse.append(self.fuse_modules[i](query, neighbor_feature))
+                    #x_fuse.append(self.fuse_modules[i](neighbor_feature))
                 x_fuse = torch.stack(x_fuse)
 
                 if len(backbone.deblocks) > 0:

@@ -61,6 +61,10 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
         self.up1 = Up(320+112, self.chain_channels)  # 上采样模块，输入输出通道分别为320+112和512
         if downsample == 8:
             self.up2 = Up(self.chain_channels+40, self.chain_channels)
+        elif downsample == 4:
+            self.up2 = Up(self.chain_channels+40, self.chain_channels)
+            self.up3 = Up(self.chain_channels+24, self.chain_channels)
+
         if not use_gt_depth:
             self.depth_head = nn.Conv2d(self.chain_channels, self.D, kernel_size=1, padding=0)  # 1x1卷积，变换维度
         self.image_head = nn.Conv2d(self.chain_channels, self.C, kernel_size=1, padding=0)
@@ -88,6 +92,9 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
         x = self.up1(endpoints['reduction_5'], endpoints['reduction_4'])  # 先对endpoints[4]进行上采样，然后将 endpoints[5]和endpoints[4] concat 在一起
         if self.downsample == 8:
             x = self.up2(x, endpoints['reduction_3'])
+        elif self.downsample == 4:
+            x = self.up2(x, endpoints['reduction_3'])
+            x = self.up3(x, endpoints['reduction_2'])
         return x  # x: 24 x 512 x 8 x 22
 
 
@@ -123,8 +130,8 @@ class ImgCamEncode(nn.Module):  # 提取图像特征进行图像编码
         depth_map[depth_map>max_value] = 0
 
         # generate one-hot refered ground truth
-        depth_mask = ((depth_map) > 0).long()
-        depth_map = depth_map.to(torch.int64).flatten(2).squeeze(1)
+        depth_mask = ((depth_map) > 0).long().view(B*N,1,h,w)
+        depth_map = depth_map.to(torch.int64).flatten(2).view(B*N, -1)
         one_hot_depth_map = []
         for batch_map in depth_map:
             one_hot_depth_map.append(F.one_hot(batch_map, num_classes=self.D))
