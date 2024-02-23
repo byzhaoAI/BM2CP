@@ -46,11 +46,19 @@ def project_lidar_to_camera(index, rgb_image, point_cloud, camera_intrinsic, ima
 
     """
     # x=11, y=11, z=11, pitch=0, yaw=, roll=0
+    """
     transform_params = [
         [11, 11, 11, 0, 0, 0],
-        [11, 11, 11, 0, 280, 0],
-        [11, 11, 11, 0, 80, 0],
+        [11, 11, 11, 0, 260, 0],
+        [11, 11, 11, 0, 100, 0],
         [11, 11, 11, 0, 180, 0]
+    ]
+    """
+    transform_params = [
+        [7, 10, 11, 0, 0, 0],
+        [7, 10, 11, 0, 260, 0],
+        [7, 10, 11, 0, 100, 0],
+        [8, 10, 11, 0, 180, 0]
     ]
 
     # Lidar intensity array of shape (p_cloud_size,) but, for now, let's

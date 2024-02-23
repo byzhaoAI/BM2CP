@@ -21,9 +21,10 @@ import numpy as np
 from PIL import Image
 
 if __name__ == '__main__':
-    current_path = os.path.dirname(os.path.realpath(__file__))
-    params = load_yaml(os.path.join(current_path, '../hypes_yaml/where2comm/dair-v2x/dair_m2fuse.yaml'))
-    output_path = "/home/test_vis_result/"
+    #current_path = os.path.dirname(os.path.realpath(__file__))
+    #params = load_yaml(os.path.join(current_path, '../hypes_yaml/dair-v2x/bm2cp.yaml'))
+    params = load_yaml('opencood/hypes_yaml/dair-v2x/dair_bm2cp.yaml')
+    output_path = "vis_raw/"
     if not os.path.exists(output_path):
         os.mkdir(output_path)
     
@@ -32,7 +33,7 @@ if __name__ == '__main__':
     subset_idx = range(10, dataset_len)
     subset_dataset = Subset(opencda_dataset, subset_idx)
     
-    data_loader = DataLoader(opencda_dataset, batch_size=1, num_workers=0,
+    data_loader = DataLoader(opencda_dataset, batch_size=1, num_workers=4,
                              collate_fn=opencda_dataset.collate_batch_test,
                              shuffle=False,
                              pin_memory=False)
@@ -48,7 +49,6 @@ if __name__ == '__main__':
         batch_data = train_utils.to_device(batch_data, device)
         gt_box_tensor = opencda_dataset.post_processor.generate_gt_bbx(batch_data)
 
-        """
         vis_save_path = os.path.join(output_path, '3d_%05d.png' % i)
         simple_vis.visualize(None,
                             gt_box_tensor,
@@ -60,7 +60,6 @@ if __name__ == '__main__':
                             vis_pred_box = vis_pred_box,
                             left_hand=False)
         
-        """
         vis_save_path = os.path.join(output_path, 'bev_%05d.png' % i)
         simple_vis.visualize(None,
                             gt_box_tensor,
@@ -68,23 +67,23 @@ if __name__ == '__main__':
                             hypes['postprocess']['gt_range'],
                             vis_save_path,
                             method='bev',
-                            vis_gt_box = True,#vis_gt_box,
+                            vis_gt_box = vis_gt_box,
                             vis_pred_box = vis_pred_box,
                             left_hand=False)
-        """
 
-        image = batch_data['ego']['image_inputs']['ori_imgs'][0][0].cpu().numpy()
+        image = batch_data['ego']['ori_image'][0].cpu().numpy() * 255
         depth_map = batch_data['ego']['image_inputs']['depth_map'][0][0].cpu().numpy()
         # 3, 360, 480 / 1, 360, 480
-        #vis_save_path = os.path.join(output_path, 'camera_%05d.png' % i)
-        #pil_image = Image.fromarray(image.astype(np.uint8))
-        #pil_image.save(vis_save_path)
-
+        vis_save_path = os.path.join(output_path, 'camera_%05d.png' % i)
+        image = np.transpose(image, (1,2,0))
+        pil_image = Image.fromarray(image.astype(np.uint8))
+        pil_image.save(vis_save_path)
+        
         vis_save_path = os.path.join(output_path, 'depth_%05d.png' % i)
         _max, _min = np.max(depth_map), np.min(depth_map)
         depth_map = 1 - (depth_map - _min) / (_max - _min)
         depth_mask = (depth_map >= 1).astype(np.float32)
-        depth_map = depth_map[0]
+        depth_map = depth_map
         H, W = depth_map.shape
         draw_depth = np.ones((3,H,W))
         draw_depth[0] = draw_depth[0] * (depth_map*(1-depth_mask)*255+depth_mask*255)
@@ -93,5 +92,5 @@ if __name__ == '__main__':
         draw_depth = draw_depth.transpose(1,2,0)
         pil_depth = Image.fromarray(draw_depth.astype(np.uint8))
         pil_depth.save(vis_save_path)
-        """
+        
         
