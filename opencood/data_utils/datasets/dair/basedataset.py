@@ -73,12 +73,14 @@ class BaseDataset(Dataset):
         else:
             self.select_keypoint = None
 
+        """
         assert 'proj_first' in params['fusion']['args']
         if params['fusion']['args']['proj_first']:
             self.proj_first = True
         else:
             self.proj_first = False
-
+        """
+        
         if self.train:
             root_dir = params['root_dir']
         else:

@@ -135,6 +135,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         lidar_pose_list = []
         lidar_pose_clean_list = []
 
+        ori_image = []
         agents_image_inputs = []
         processed_features = []
         projected_lidar_clean_list = []
@@ -184,6 +185,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
             processed_features.append(selected_cav_processed['processed_features'])
             agents_image_inputs.append(selected_cav_processed['image_inputs'])
+            ori_image.append(selected_cav_processed['ori_img'])
 
             if self.kd_flag:
                 projected_lidar_clean_list.append(selected_cav_processed['projected_lidar_clean'])
@@ -197,6 +199,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         #                        'voxel_num_points': }
         merged_feature_dict = merge_features_to_dict(processed_features)
         merged_image_inputs_dict = merge_features_to_dict(agents_image_inputs, merge='stack')
+        ori_image = torch.stack(ori_image)
 
         if self.kd_flag:    # for disconet knowledge distillation
             stack_lidar_np = np.vstack(projected_lidar_clean_list)
@@ -230,6 +233,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             'lidar_poses_clean': np.array(lidar_pose_clean_list).reshape(-1, 6),  # [N_cav, 6],
             'image_inputs': merged_image_inputs_dict,
             'processed_lidar': merged_feature_dict,
+            'ori_image': ori_image,
 
             'label_dict': label_dict,
             'label_dict_single_v': label_dict_single_v,
@@ -383,6 +387,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # image and depth
         imgH, imgW = selected_cav_base["camera_data"].height, selected_cav_base["camera_data"].width
         img_src = [selected_cav_base["camera_data"]]
+        ori_src = np.array(selected_cav_base["camera_data"])
 
         post_tran = torch.zeros(3)
         post_rot = torch.eye(3)
@@ -406,6 +411,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 "post_trans": post_tran.unsqueeze(0),
             }
         }
+        selected_cav_processed.update({"ori_img": camera_utils.img_to_tensor(ori_src)})
 
         # calculate the transformation matrix, the transformation matrix from x1(other) to x2(ego)
         transformation_matrix = transformation_utils.x1_to_x2(selected_cav_base['params']['lidar_pose'], ego_pose)
@@ -608,6 +614,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         pairwise_t_matrix_list = [] # pairwise transformation matrix
         processed_lidar_list = []
         image_inputs_list = []
+        ori_image = []
 
         label_dict_list = []
         label_dict_list_single_v = []
@@ -643,6 +650,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
             processed_lidar_list.append(ego_dict['processed_lidar']) # different cav_num, ego_dict['processed_lidar'] is list.
             image_inputs_list.append(ego_dict['image_inputs'])
+            ori_image.append(ego_dict['ori_image'])
 
             label_dict_list.append(ego_dict['label_dict'])
             label_dict_list_single_v.append(ego_dict['label_dict_single_v'])
@@ -686,6 +694,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         merged_feature_dict = merge_features_to_dict(processed_lidar_list)
         processed_lidar_torch_dict = self.pre_processor.collate_batch(merged_feature_dict)
         merged_image_inputs_dict = merge_features_to_dict(image_inputs_list, merge='cat')
+        ori_image = torch.concat(ori_image)
 
         # the sum of cav number per batch
         record_len = torch.from_numpy(np.array(record_len, dtype=int))
@@ -725,6 +734,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 'label_dict_single_i': label_torch_dict_single_i,
                 'processed_lidar': processed_lidar_torch_dict,
                 'image_inputs': merged_image_inputs_dict,
+                'ori_image': ori_image,
                 'record_len': record_len,
                 'pairwise_t_matrix': pairwise_t_matrix,
                 'lidar_pose_clean': lidar_pose_clean,
