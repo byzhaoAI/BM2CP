@@ -32,6 +32,8 @@ def test_parser():
     parser.add_argument('--fusion_method', type=str,
                         default='intermediate',
                         help='no, no_w_uncertainty, late, early or intermediate')
+    parser.add_argument('--div_range', type=bool, default=False,
+                        help='evaluate short/middle/long range results. Only for V2v4real dataset.')
     parser.add_argument('--save_vis', type=bool, default=False,
                         help='save how many numbers of visualization result?')
     parser.add_argument('--save_vis_n', type=int, default=10,
@@ -61,6 +63,10 @@ def main():
     if 'opv2v' in opt.model_dir:
         from opencood.utils import eval_utils_opv2v as eval_utils
         left_hand = True
+
+    elif 'v2v4real' in opt.model_dir:
+        from opencood.utils import eval_utils_v2v4real as eval_utils
+        left_hand = False
 
     elif 'dair' in opt.model_dir:
         from opencood.utils import eval_utils_where2comm as eval_utils
@@ -108,11 +114,21 @@ def main():
                    0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},                
                    0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
 
+    if opt.div_range:
+        result_stat_short = {0.5: {'tp': [], 'fp': [], 'gt': 0},
+                            0.7: {'tp': [], 'fp': [], 'gt': 0}}
+        result_stat_middle = {0.5: {'tp': [], 'fp': [], 'gt': 0},
+                            0.7: {'tp': [], 'fp': [], 'gt': 0}}
+        result_stat_long = {0.5: {'tp': [], 'fp': [], 'gt': 0},
+                            0.7: {'tp': [], 'fp': [], 'gt': 0}}
+
     total_comm_rates = []
     # total_box = []
     for i, batch_data in tqdm(enumerate(data_loader)):
         with torch.no_grad():
             batch_data = train_utils.to_device(batch_data, device)
+            # if opt.fusion_method == 'nofusion':
+            #     pred_box_tensor, pred_score, gt_box_tensor = infrence_utils.inference_no_fusion(batch_data, model, opencood_dataset)
             if opt.fusion_method == 'late':
                 pred_box_tensor, pred_score, gt_box_tensor, output_dict = inference_utils.inference_late_fusion(batch_data, model, opencood_dataset)
                 comm = 0
@@ -149,7 +165,56 @@ def main():
                                        gt_box_tensor,
                                        result_stat,
                                        0.7)
-                                       
+
+            if opt.div_range:        
+                # short range
+                eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                        pred_score,
+                                        gt_box_tensor,
+                                        result_stat_short,
+                                        0.5,
+                                        left_range=0,
+                                        right_range=30)
+                eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                        pred_score,
+                                        gt_box_tensor,
+                                        result_stat_short,
+                                        0.7,
+                                        left_range=0,
+                                        right_range=30)
+
+                # middle range
+                eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                        pred_score,
+                                        gt_box_tensor,
+                                        result_stat_middle,
+                                        0.5,
+                                        left_range=30,
+                                        right_range=50)
+                eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                        pred_score,
+                                        gt_box_tensor,
+                                        result_stat_middle,
+                                        0.7,
+                                        left_range=30,
+                                        right_range=50)
+
+                # right range
+                eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                        pred_score,
+                                        gt_box_tensor,
+                                        result_stat_long,
+                                        0.5,
+                                        left_range=50,
+                                        right_range=100)
+                eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                        pred_score,
+                                        gt_box_tensor,
+                                        result_stat_long,
+                                        0.7,
+                                        left_range=50,
+                                        right_range=100)
+            
             if opt.save_npy:
                 npy_save_path = os.path.join(opt.model_dir, 'npy')
                 if not os.path.exists(npy_save_path):
@@ -276,6 +341,11 @@ def main():
     else:
         comm_rates = 0
     ap_30, ap_50, ap_70 = eval_utils.eval_final_results(result_stat, opt.model_dir)
+
+    if opt.div_range:
+        eval_utils.eval_final_results(result_stat_short, opt.model_dir, "short")
+        eval_utils.eval_final_results(result_stat_middle, opt.model_dir, "middle")
+        eval_utils.eval_final_results(result_stat_long, opt.model_dir, "long")
     
     with open(os.path.join(saved_path, 'result.txt'), 'a+') as f:
         msg = 'Epoch: {} | AP @0.3: {:.04f} | AP @0.5: {:.04f} | AP @0.7: {:.04f} | comm_rate: {:.06f}\n'.format(epoch_id, ap_30, ap_50, ap_70, comm_rates)

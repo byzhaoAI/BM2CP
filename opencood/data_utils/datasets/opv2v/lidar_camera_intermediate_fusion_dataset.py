@@ -834,10 +834,12 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         gt_box_tensor : torch.Tensor
             The tensor of gt bounding box.
         """
-        pred_box_tensor, pred_score = self.post_processor.post_process(data_dict, output_dict)
+        # pred_box_tensor, pred_score = self.post_processor.post_process(data_dict, output_dict)
+        preds = self.post_processor.post_process(data_dict, output_dict)
         gt_box_tensor = self.post_processor.generate_gt_bbx(data_dict)
 
-        return pred_box_tensor, pred_score, gt_box_tensor
+        # return pred_box_tensor, pred_score, gt_box_tensor
+        return preds + (gt_box_tensor,)
     """
     def get_pairwise_transformation(self, base_data_dict, max_cav):
         

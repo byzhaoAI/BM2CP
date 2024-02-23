@@ -40,10 +40,8 @@ class PointPillarV2VNet(nn.Module):
 
         self.fusion_net = V2VNetFusion(args['v2vfusion'])
 
-        self.cls_head = nn.Conv2d(128 * 2, args['anchor_number'],
-                                  kernel_size=1)
-        self.reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'],
-                                  kernel_size=1)
+        self.cls_head = nn.Conv2d(128 * 2, args['anchor_number'], kernel_size=1)
+        self.reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'], kernel_size=1)
         if args['backbone_fix']:
             self.backbone_fix()
 
@@ -106,19 +104,17 @@ class PointPillarV2VNet(nn.Module):
         fused_feature, comm_rates = self.fusion_net(spatial_features_2d,
                                         record_len,
                                         pairwise_t_matrix)
-
+        # fused_feature: torch.Size([4, 256, 48, 176])
 
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
-        print(psm.shape, rm.shape)
 
         output_dict = {'psm': psm,
                        'rm': rm}
-
+        
         output_dict.update({
             'mask': 0,
             'comm_rate': comm_rates
         })
 
         return output_dict
-

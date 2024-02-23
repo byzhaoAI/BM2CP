@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-# Author: Runsheng Xu <rxx3386@ucla.edu>
-# License: TDG-Attribution-NonCommercial-NoDistrib
-
 """
 Dataset class for late fusion
 """
@@ -15,26 +11,19 @@ from torch.utils.data import DataLoader
 
 import opencood.data_utils.datasets
 from opencood.data_utils.post_processor import build_postprocessor
-from opencood.data_utils.datasets.opv2v import basedataset
+from opencood.data_utils.datasets.v2v4real import basedataset
 from opencood.data_utils.pre_processor import build_preprocessor
 from opencood.hypes_yaml.yaml_utils import load_yaml
 from opencood.utils import box_utils
-from opencood.utils.pcd_utils import \
-    mask_points_by_range, mask_ego_points, shuffle_points, \
-    downsample_lidar_minimum
-from opencood.utils.transformation_utils import x1_to_x2
+from opencood.utils.pcd_utils import mask_points_by_range, mask_ego_points, shuffle_points, downsample_lidar_minimum
+from opencood.utils.transformation_utils_v2v4real import x1_to_x2
 
 
 class LateFusionDataset(basedataset.BaseDataset):
-    """
-    This class is for intermediate fusion where each vehicle transmit the
-    detection outputs to ego.
-    """
-    def __init__(self, params, visualize, train=True):
-        super(LateFusionDataset, self).__init__(params, visualize, train)
-        self.pre_processor = build_preprocessor(params['preprocess'],
-                                                train)
-        self.post_processor = build_postprocessor(params['postprocess'], dataset='opv2v', train=train)
+    def __init__(self, params, visualize, train=True, isSim=False):
+        super(LateFusionDataset, self).__init__(params, visualize, train, isSim)
+        self.pre_processor = build_preprocessor(params['preprocess'], train)
+        self.post_processor = build_postprocessor(params['postprocess'], dataset='v2v4real', train=train)
 
     def __getitem__(self, idx):
         base_data_dict = self.retrieve_base_data(idx)
@@ -72,10 +61,8 @@ class LateFusionDataset(basedataset.BaseDataset):
 
         # generate the bounding box(n, 7) under the cav's space
         object_bbx_center, object_bbx_mask, object_ids = \
-            self.post_processor.generate_object_center([selected_cav_base],
-                                                       selected_cav_base[
-                                                           'params'][
-                                                           'lidar_pose'])
+            self.post_processor.generate_object_center_v2v4real([selected_cav_base],
+                                                       np.identity(4))
         # data augmentation
         lidar_np, object_bbx_center, object_bbx_mask = \
             self.augment(lidar_np, object_bbx_center, object_bbx_mask)
@@ -138,23 +125,21 @@ class LateFusionDataset(basedataset.BaseDataset):
 
         # loop over all CAVs to process information
         for cav_id, selected_cav_base in base_data_dict.items():
-            distance = \
-                math.sqrt((selected_cav_base['params']['lidar_pose'][0] -
-                           ego_lidar_pose[0])**2 + (
-                                      selected_cav_base['params'][
-                                          'lidar_pose'][1] - ego_lidar_pose[
-                                          1])**2)
-            if distance > opencood.data_utils.datasets.COM_RANGE:
-                continue
-
             # find the transformation matrix from current cav to ego.
-            cav_lidar_pose = selected_cav_base['params']['lidar_pose']
-            transformation_matrix = x1_to_x2(cav_lidar_pose, ego_lidar_pose)
+            # this is used to project prediction to the right space
+            transformation_matrix = \
+                selected_cav_base['params']['transformation_matrix']
+            # this is used to project gt objects to ego space
+            gt_transformation_matrix = \
+                selected_cav_base['params']['gt_transformation_matrix']
 
             selected_cav_processed = \
                 self.get_item_single_car(selected_cav_base)
             selected_cav_processed.update({'transformation_matrix':
                                                transformation_matrix})
+            selected_cav_processed.update({'gt_transformation_matrix':
+                                               gt_transformation_matrix})
+
             update_cav = "ego" if cav_id == ego_id else cav_id
             processed_data_dict.update({update_cav: selected_cav_processed})
 
@@ -225,13 +210,17 @@ class LateFusionDataset(basedataset.BaseDataset):
             transformation_matrix_torch = \
                 torch.from_numpy(
                     np.array(cav_content['transformation_matrix'])).float()
+            gt_transformation_matrix_torch = \
+                torch.from_numpy(
+                    np.array(cav_content['gt_transformation_matrix'])).float()
 
             output_dict[cav_id].update({'object_bbx_center': object_bbx_center,
                                         'object_bbx_mask': object_bbx_mask,
                                         'processed_lidar': processed_lidar_torch_dict,
                                         'label_dict': label_torch_dict,
                                         'object_ids': object_ids,
-                                        'transformation_matrix': transformation_matrix_torch})
+                                        'transformation_matrix': transformation_matrix_torch,
+                                        'gt_transformation_matrix': gt_transformation_matrix_torch})
 
             if self.visualize:
                 origin_lidar = \
@@ -241,8 +230,8 @@ class LateFusionDataset(basedataset.BaseDataset):
                 output_dict[cav_id].update({'origin_lidar': origin_lidar})
 
         if self.visualize:
-            projected_lidar_stack = torch.from_numpy(
-                np.vstack(projected_lidar_list))
+            projected_lidar_stack = [torch.from_numpy(
+                np.vstack(projected_lidar_list))]
             output_dict['ego'].update({'origin_lidar': projected_lidar_stack})
 
         return output_dict
@@ -272,3 +261,17 @@ class LateFusionDataset(basedataset.BaseDataset):
 
         # return pred_box_tensor, pred_score, gt_box_tensor
         return preds + (gt_box_tensor,)
+
+
+if __name__ == '__main__':
+    params = load_yaml('../../hypes_yaml/voxelnet_late_fusion.yaml')
+
+    opencda_dataset = LateFusionDataset(params, train=False, visualize=True)
+    # opencda_dataset.__getitem__(40)
+    data_loader = DataLoader(opencda_dataset, batch_size=1, num_workers=4,
+                             collate_fn=opencda_dataset.collate_batch_test,
+                             shuffle=False,
+                             pin_memory=False)
+
+    for j, batch_data in enumerate(data_loader):
+        print('test')

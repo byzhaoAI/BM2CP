@@ -484,11 +484,12 @@ class LateFusionDatasetDAIR(Dataset):
         gt_box_tensor : torch.Tensor
             The tensor of gt bounding box.
         """
-        pred_box_tensor, pred_score = \
-            self.post_processor.post_process(data_dict, output_dict)
+        # pred_box_tensor, pred_score = self.post_processor.post_process(data_dict, output_dict)
+        preds = self.post_processor.post_process(data_dict, output_dict)
         gt_box_tensor = self.post_processor.generate_gt_bbx_by_iou(data_dict)
 
-        return pred_box_tensor, pred_score, gt_box_tensor
+        # return pred_box_tensor, pred_score, gt_box_tensor
+        return preds + (gt_box_tensor,)
 
     def post_process_no_fusion(self, data_dict, output_dict_ego):
         """

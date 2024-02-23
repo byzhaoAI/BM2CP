@@ -74,6 +74,8 @@ class BasePostprocessor(object):
             # object_bbx_center is clean.
             if self.dataset == 'dair':
                 transformation_matrix = cav_content['transformation_matrix_clean']
+            elif self.dataset == 'v2v4real':
+                transformation_matrix = cav_content['transformation_matrix'] if 'gt_transformation_matrix' not in cav_content else cav_content['gt_transformation_matrix']
             else:
                 transformation_matrix = cav_content['transformation_matrix']
 
@@ -238,6 +240,60 @@ class BasePostprocessor(object):
             object_np[i] = object_bbx[0, :]
             mask[i] = 1
             object_ids.append(object_id)
+
+        return object_np, mask, object_ids
+
+    def generate_object_center_v2v4real(self, cav_contents, reference_lidar_pose):
+        """
+        Retrieve all objects in a format of (n, 7), where 7 represents
+        x, y, z, l, w, h, yaw or x, y, z, h, w, l, yaw.
+
+        Parameters
+        ----------
+        cav_contents : list
+            List of dictionary, save all cavs' information.
+
+        reference_lidar_pose : np.ndarray
+            The final target lidar pose with length 6.
+
+        Returns
+        -------
+        object_np : np.ndarray
+            Shape is (max_num, 7).
+        mask : np.ndarray
+            Shape is (max_num,).
+        object_ids : list
+            Length is number of bbx in current sample.
+        """
+        from opencood.data_utils.datasets import COM_RANGE
+
+        tmp_object_dict = {}
+        for cav_content in cav_contents:
+            tmp_object_dict.update(cav_content['params']['vehicles'])
+            cav_id = cav_content['cav_id']
+
+        output_dict = {}
+        filter_range = self.params['anchor_args']['cav_lidar_range'] if self.train else COM_RANGE
+
+        from opencood.utils import box_utils_v2v4real as box_utils
+        box_utils.project_world_objects(tmp_object_dict,
+                                        output_dict,
+                                        reference_lidar_pose,
+                                        filter_range,
+                                        self.params['order'])
+
+        object_np = np.zeros((self.params['max_num'], 7))
+        mask = np.zeros(self.params['max_num'])
+        object_ids = []
+
+        for i, (object_id, object_content) in enumerate(output_dict.items()):
+            object_bbx = object_content['coord']
+            object_np[i] = object_bbx[0, :]
+            mask[i] = 1
+            if object_content['ass_id'] != -1:
+                object_ids.append(object_content['ass_id'])
+            else:
+                object_ids.append(object_id + 100 * cav_id)
 
         return object_np, mask, object_ids
 

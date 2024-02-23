@@ -39,9 +39,7 @@ def main():
 
     print('Dataset Building')
     opencood_train_dataset = build_dataset(hypes, visualize=False, train=True)
-    opencood_validate_dataset = build_dataset(hypes,
-                                              visualize=False,
-                                              train=False)
+    opencood_validate_dataset = build_dataset(hypes, visualize=False, train=False)
 
     train_loader = DataLoader(opencood_train_dataset,
                             batch_size=hypes['train_params']['batch_size'],
@@ -110,6 +108,10 @@ def main():
     # used to help schedule learning rate
     with_round_loss = False
     for epoch in range(init_epoch, max(epoches, init_epoch)):
+        if hypes['lr_scheduler']['core_method'] != 'cosineannealwarm':
+            scheduler.step(epoch)
+        if hypes['lr_scheduler']['core_method'] == 'cosineannealwarm':
+            scheduler.step_update(epoch * len(train_loader) + 0)
         for param_group in optimizer.param_groups:
             print('learning rate %f' % param_group["lr"])
 
@@ -178,6 +180,9 @@ def main():
             optimizer.step()
 
             torch.cuda.empty_cache()
+
+            if hypes['lr_scheduler']['core_method'] == 'cosineannealwarm':
+                scheduler.step_update(epoch * len(train_loader) + i)
         
         if epoch % hypes['train_params']['save_freq'] == 0:
             torch.save(model.state_dict(), os.path.join(saved_path, 'net_epoch%d.pth' % (epoch + 1)))

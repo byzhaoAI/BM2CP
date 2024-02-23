@@ -228,16 +228,17 @@ class VoxelPostprocessor(BasePostprocessor):
             neg_equal_one.append(label_batch_list[i]['neg_equal_one'])
             targets.append(label_batch_list[i]['targets'])
 
-        pos_equal_one = \
-            torch.from_numpy(np.array(pos_equal_one))
-        neg_equal_one = \
-            torch.from_numpy(np.array(neg_equal_one))
-        targets = \
-            torch.from_numpy(np.array(targets))
+        pos_equal_one = torch.from_numpy(np.array(pos_equal_one))
+        neg_equal_one = torch.from_numpy(np.array(neg_equal_one))
+        targets = torch.from_numpy(np.array(targets))
 
-        return {'targets': targets,
-                'pos_equal_one': pos_equal_one,
-                'neg_equal_one': neg_equal_one}
+        label_dict = {
+            'targets': targets,
+            'pos_equal_one': pos_equal_one,
+            'neg_equal_one': neg_equal_one
+        }
+        
+        return label_dict
 
     def post_process(self, data_dict, output_dict):
         """
@@ -290,8 +291,7 @@ class VoxelPostprocessor(BasePostprocessor):
 
             # convert regression map back to bounding box
             batch_box3d = self.delta_to_boxes3d(reg, anchor_box)
-            mask = \
-                torch.gt(prob, self.params['target_args']['score_threshold'])
+            mask = torch.gt(prob, self.params['target_args']['score_threshold'])
             mask = mask.view(1, -1)
             mask_reg = mask.unsqueeze(2).repeat(1, 1, 7)
 
@@ -344,6 +344,7 @@ class VoxelPostprocessor(BasePostprocessor):
 
         if len(pred_box2d_list) ==0 or len(pred_box3d_list) == 0:
             return None, None
+        
         # shape: (N, 5)
         pred_box2d_list = torch.vstack(pred_box2d_list)
         # scores
@@ -360,10 +361,11 @@ class VoxelPostprocessor(BasePostprocessor):
 
         # STEP3
         # nms
-        keep_index = box_utils.nms_rotated(pred_box3d_tensor,
-                                           scores,
-                                           self.params['nms_thresh']
-                                           )
+        keep_index = box_utils.nms_rotated(
+            pred_box3d_tensor,
+            scores,
+            self.params['nms_thresh']
+        )
 
         pred_box3d_tensor = pred_box3d_tensor[keep_index]
 
@@ -378,7 +380,6 @@ class VoxelPostprocessor(BasePostprocessor):
 
         assert scores.shape[0] == pred_box3d_tensor.shape[0]
 
-        # return pred_box3d_tensor, scores, count
         return pred_box3d_tensor, scores
 
     @staticmethod

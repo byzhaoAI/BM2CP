@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-# Author: Runsheng Xu <rxx3386@ucla.edu>
-# License: TDG-Attribution-NonCommercial-NoDistrib
-
 """
 Dataset class for early fusion
 """
@@ -11,28 +7,24 @@ from collections import OrderedDict
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 import opencood.data_utils.datasets
 from opencood.utils import box_utils
 from opencood.data_utils.post_processor import build_postprocessor
-from opencood.data_utils.datasets.dair import basedataset
+from opencood.data_utils.datasets.v2v4real import basedataset
 from opencood.data_utils.pre_processor import build_preprocessor
-from opencood.utils.pcd_utils import \
-    mask_points_by_range, mask_ego_points, shuffle_points, \
-    downsample_lidar_minimum
-from opencood.utils.transformation_utils import x1_to_x2
+from opencood.hypes_yaml.yaml_utils import load_yaml
+from opencood.utils.pcd_utils import mask_points_by_range, mask_ego_points, shuffle_points, downsample_lidar_minimum
+from opencood.utils.transformation_utils_v2v4real import x1_to_x2
 
 
 class EarlyFusionDataset(basedataset.BaseDataset):
-    """
-    This dataset is used for early fusion, where each CAV transmit the raw
-    point cloud to the ego vehicle.
-    """
-    def __init__(self, params, visualize, train=True):
-        super(EarlyFusionDataset, self).__init__(params, visualize, train)
+    def __init__(self, params, visualize, train=True, isSim=False):
+        super(EarlyFusionDataset, self).__init__(params, visualize, train, isSim)
         self.pre_processor = build_preprocessor(params['preprocess'],
                                                 train)
-        self.post_processor = build_postprocessor(params['postprocess'], dataset='opv2v', train=train)
+        self.post_processor = build_postprocessor(params['postprocess'], dataset='v2v4real', train=train)
 
     def __getitem__(self, idx):
         base_data_dict = self.retrieve_base_data(idx)
@@ -59,16 +51,6 @@ class EarlyFusionDataset(basedataset.BaseDataset):
 
         # loop over all CAVs to process information
         for cav_id, selected_cav_base in base_data_dict.items():
-            # check if the cav is within the communication range with ego
-            distance = \
-                math.sqrt((selected_cav_base['params']['lidar_pose'][0] -
-                           ego_lidar_pose[0]) ** 2 + (
-                                  selected_cav_base['params'][
-                                      'lidar_pose'][1] - ego_lidar_pose[
-                                      1]) ** 2)
-            if distance > opencood.data_utils.datasets.COM_RANGE:
-                continue
-
             selected_cav_processed = self.get_item_single_car(
                 selected_cav_base,
                 ego_lidar_pose)
@@ -105,19 +87,20 @@ class EarlyFusionDataset(basedataset.BaseDataset):
                                                          'cav_lidar_range'])
         # augmentation may remove some of the bbx out of range
         object_bbx_center_valid = object_bbx_center[mask == 1]
-        object_bbx_center_valid, range_mask = \
+        object_bbx_center_valid, valid_mask = \
             box_utils.mask_boxes_outside_range_numpy(object_bbx_center_valid,
                                                      self.params['preprocess'][
                                                          'cav_lidar_range'],
-                                                     self.params['postprocess'][
-                                                         'order'],
-                                                     return_mask=True
+                                                     self.params[
+                                                         'postprocess'][
+                                                         'order']
                                                      )
         mask[object_bbx_center_valid.shape[0]:] = 0
         object_bbx_center[:object_bbx_center_valid.shape[0]] = \
             object_bbx_center_valid
         object_bbx_center[object_bbx_center_valid.shape[0]:] = 0
-        unique_indices = list(np.array(unique_indices)[range_mask])
+        # update unique indices
+        unique_indices = [unique_indices[i] for i, n in enumerate(list(valid_mask)) if n]
 
         # pre-process the lidar to voxel/bev/downsampled lidar
         lidar_dict = self.pre_processor.preprocess(projected_lidar_stack)
@@ -165,14 +148,13 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         selected_cav_processed = {}
 
         # calculate the transformation matrix
-        transformation_matrix = \
-            x1_to_x2(selected_cav_base['params']['lidar_pose'],
-                     ego_pose)
+        transformation_matrix = selected_cav_base['params'][
+            'transformation_matrix']
 
         # retrieve objects under ego coordinates
         object_bbx_center, object_bbx_mask, object_ids = \
-            self.post_processor.generate_object_center([selected_cav_base],
-                                                       ego_pose)
+            self.post_processor.generate_object_center_v2v4real([selected_cav_base],
+                                                       transformation_matrix if not self.isSim else ego_pose)
 
         # filter lidar
         lidar_np = selected_cav_base['lidar_np']
@@ -283,3 +265,10 @@ class EarlyFusionDataset(basedataset.BaseDataset):
 
         # return pred_box_tensor, pred_score, gt_box_tensor
         return preds + (gt_box_tensor,)
+
+
+if __name__ == '__main__':
+    params = load_yaml('../../hypes_yaml/voxelnet_early_fusion.yaml')
+
+    opencda_dataset = EarlyFusionDataset(params, train=True, visualize=True)
+    opencda_dataset.__getitem__(10)
