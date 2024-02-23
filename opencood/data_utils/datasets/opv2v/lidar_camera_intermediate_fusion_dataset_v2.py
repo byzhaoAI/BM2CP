@@ -8,11 +8,10 @@ Dataset class for intermediate fusion with lidar-camera
 """
 import os
 import math
-import torch
 import bisect
+import torch
 import numpy as np
 from PIL import Image
-from copy import deepcopy
 from collections import OrderedDict
 
 import opencood.data_utils.datasets
@@ -28,6 +27,49 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import opencood.visualization.simple_plot3d.canvas_3d as canvas_3d
 import opencood.visualization.simple_plot3d.canvas_bev as canvas_bev
+
+
+def merge_features_to_dict(processed_feature_list, merge=None):
+    """
+    Merge the preprocessed features from different cavs to the same
+    dictionary.
+
+    Parameters
+    ----------
+    processed_feature_list : list
+        A list of dictionary containing all processed features from
+        different cavs.
+
+    Returns
+    -------
+    merged_feature_dict: dict
+        key: feature names, value: list of features.
+    """
+
+    merged_feature_dict = OrderedDict()
+
+    for i in range(len(processed_feature_list)):
+        for feature_name, feature in processed_feature_list[i].items():
+
+            if feature_name not in merged_feature_dict:
+                merged_feature_dict[feature_name] = []
+            if isinstance(feature, list):
+                merged_feature_dict[feature_name] += feature
+            else:
+                merged_feature_dict[feature_name].append(feature)
+
+    # stack them
+    # it usually happens when merging cavs images -> v.shape = [N, Ncam, C, H, W]
+    # cat them
+    # it usually happens when merging batches cav images -> v is a list [(N1+N2+...Nn, Ncam, C, H, W))]
+    if merge=='stack': 
+        for feature_name, features in merged_feature_dict.items():
+            merged_feature_dict[feature_name] = torch.stack(features, dim=0)
+    elif merge=='cat':
+        for feature_name, features in merged_feature_dict.items():
+            merged_feature_dict[feature_name] = torch.cat(features, dim=0)
+
+    return merged_feature_dict
 
 
 def extract_timestamps(yaml_files):
@@ -115,8 +157,6 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         self.visualize = visualize
         self.train = train
 
-        self.pre_processor = None
-        self.post_processor = None
         self.data_augmentor = DataAugmentor(params['data_augment'], train)
         self.pre_processor = build_preprocessor(params['preprocess'], train)
         self.post_processor = post_processor.build_postprocessor(params['postprocess'], dataset='opv2v', train=train)
@@ -237,8 +277,9 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         assert ego_id != -1
         assert len(ego_lidar_pose) > 0
 
-        pairwise_t_matrix = self.get_pairwise_transformation(base_data_dict, self.max_cav)
-
+        pairwise_t_matrix, img_pairwise_t_matrix = self.get_pairwise_transformation(base_data_dict, self.max_cav)
+        
+        agents_image_inputs = []
         processed_features = []
         object_stack = []
         object_id_stack = []
@@ -262,11 +303,12 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
             if distance > opencood.data_utils.datasets.COM_RANGE:
                 continue
 
-            selected_cav_processed = self.get_item_single_car(selected_cav_base, base_data_dict[ego_id], ego_lidar_pose, cav_id)
+            selected_cav_processed = self.get_item_single_car(selected_cav_base, ego_lidar_pose, cav_id)
 
-            object_stack.append(selected_cav_processed['object_bbx_center'])
             object_id_stack += selected_cav_processed['object_ids']
+            object_stack.append(selected_cav_processed['object_bbx_center'])
             processed_features.append(selected_cav_processed['processed_features'])
+            agents_image_inputs.append(selected_cav_processed['image_inputs'])
 
             velocity.append(selected_cav_processed['velocity'])
             time_delay.append(float(selected_cav_base['time_delay']))
@@ -284,6 +326,10 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
 
             if self.visualize:
                 projected_lidar_stack.append(selected_cav_processed['projected_lidar'])
+        # merge preprocessed features from different cavs into the same dict
+        merged_feature_dict = merge_features_to_dict(processed_features)
+        merged_image_inputs_dict = merge_features_to_dict(agents_image_inputs, merge='stack')
+
 
         # exclude all repetitive objects
         unique_indices = [object_id_stack.index(x) for x in set(object_id_stack)]
@@ -296,9 +342,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         object_bbx_center[:object_stack.shape[0], :] = object_stack
         mask[:object_stack.shape[0]] = 1
 
-        # merge preprocessed features from different cavs into the same dict
-        cav_num = len(processed_features)
-        merged_feature_dict = self.merge_features_to_dict(processed_features)
+
 
         # generate the anchor boxes
         anchor_box = self.post_processor.generate_anchor_box()
@@ -316,19 +360,22 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         
         processed_data_dict = OrderedDict()
         processed_data_dict['ego'] = {
-            'object_bbx_center': object_bbx_center,
-            'object_bbx_mask': mask,
-            'object_ids': [object_id_stack[i] for i in unique_indices],
-            'anchor_box': anchor_box,
+            'cav_num': len(processed_features),
+            'lidar_pose': lidar_pose,
+            'img_pairwise_t_matrix': img_pairwise_t_matrix,
+            'pairwise_t_matrix': pairwise_t_matrix,
+            'spatial_correction_matrix': spatial_correction_matrix,
+            'image_inputs': merged_image_inputs_dict,
             'processed_lidar': merged_feature_dict,
             'label_dict': label_dict,
-            'cav_num': cav_num,
+            'anchor_box': anchor_box,
+            'object_ids': [object_id_stack[i] for i in unique_indices],
+            'object_bbx_center': object_bbx_center,
+            'object_bbx_mask': mask,
+
             'velocity': velocity,
             'time_delay': time_delay,
             'infra': infra,
-            'spatial_correction_matrix': spatial_correction_matrix,
-            'pairwise_t_matrix': pairwise_t_matrix,
-            'lidar_pose': lidar_pose,
             'ego_flag': ego_flag
         }
 
@@ -392,7 +439,8 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
             data[cav_id]['params'] = self.reform_param(cav_content, ego_cav_content, timestamp_key, timestamp_key_delay, cur_ego_pose_flag)
             data[cav_id]['lidar_np'] = pcd_utils.pcd_to_np(cav_content[timestamp_key_delay]['lidar'])
             img_src = []
-            for image_path in cav_content[timestamp_key_delay]['camera']:
+            for idx in range(self.data_aug_conf['Ncams']):
+                image_path = cav_content[timestamp_key_delay]['camera'][idx]
                 img_src.append(Image.open(image_path))
             data[cav_id]['camera_data'] = img_src
         return data
@@ -450,6 +498,32 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         # todo: it may not be true for other dataset like DAIR-V2X and V2X-Sim
         time_delay = time_delay // 100
         return time_delay if self.async_flag else 0
+
+    def add_loc_noise(self, pose, xyz_std, ryp_std):
+        """
+        Add localization noise to the pose.
+
+        Parameters
+        ----------
+        pose : list
+            x,y,z,roll,yaw,pitch
+
+        xyz_std : float
+            std of the gaussian noise on xyz
+
+        ryp_std : float
+            std of the gaussian noise
+        """
+        np.random.seed(self.seed)
+        xyz_noise = np.random.normal(0, xyz_std, 3)
+        ryp_std = np.random.normal(0, ryp_std, 3)
+        noise_pose = [pose[0] + xyz_noise[0],
+                      pose[1] + xyz_noise[1],
+                      pose[2] + xyz_noise[2],
+                      pose[3],
+                      pose[4] + ryp_std[1],
+                      pose[5]]
+        return noise_pose
 
     def reform_param(self, cav_content, ego_content, timestamp_cur, timestamp_delay, cur_ego_pose_flag):
         """
@@ -511,9 +585,10 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         delay_params['gt_transformation_matrix'] = gt_transformation_matrix
         delay_params['spatial_correction_matrix'] = spatial_correction_matrix
         
-        camera_ids = ['camera0', 'camera1', 'camera2', 'camera3']
         camera_to_lidar_matrix, camera_intrinsic = [], []
-        for camera_id in camera_ids:
+        for idx in range(self.data_aug_conf['Ncams']):
+            camera_id = self.data_aug_conf['cams'][idx]
+
             camera_pos = delay_params[camera_id]['cords']
             lidar_pose = delay_params['lidar_pose']
             camera2lidar = transformation_utils.x1_to_x2(camera_pos, lidar_pose)
@@ -528,7 +603,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         
         return delay_params
 
-    def get_item_single_car(self, selected_cav_base, ego_cav_base, ego_pose, cav_id=None):
+    def get_item_single_car(self, selected_cav_base, ego_pose, cav_id=None):
         """
         Project the lidar and bbx to ego space first, and then do clipping.
 
@@ -555,7 +630,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         # for convenience, make augmentation matrices 3x3
         post_tran = torch.zeros(4,3)
         #post_tran[:2] = post_tran2
-        post_rot = torch.eye(4,3)
+        post_rot = torch.eye(3).unsqueeze(0).repeat(4,1,1)
         #post_rot[:2, :2] = post_rot2
 
         # image resize and normalize
@@ -574,7 +649,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
                 "rots": torch.from_numpy(camera_to_lidar_matrix[:, :3, :3]),  # R_wc, we consider world-coord is the lidar-coord
                 "trans": torch.from_numpy(camera_to_lidar_matrix[:, :3, 3]),  # T_wc
                 "post_rots": post_rot,  # 4*3
-                "post_trans": post_tran,    # 4*3
+                "post_trans": post_tran,    # 4*3*3
             }
         }
         # for key, value in selected_cav_processed['image_inputs'].items():
@@ -593,14 +668,11 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         lidar_np = pcd_utils.shuffle_points(lidar_np)
         # remove points that hit itself
         lidar_np = pcd_utils.mask_ego_points(lidar_np)
-        
-        xyzi_for_ego = deepcopy(lidar_np)
-        if self.proj_first:
-            projected_lidar = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
 
         # project the lidar to ego space
+        # xyzi_for_ego = deepcopy(lidar_np)
         if self.proj_first:
-            lidar_np[:, :3] = projected_lidar
+            lidar_np[:, :3] = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
         lidar_np = pcd_utils.mask_points_by_range(lidar_np, self.params['preprocess']['cav_lidar_range'])
         processed_lidar = self.pre_processor.preprocess(lidar_np)
 
@@ -608,23 +680,20 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         # project pcs to img view, create depth map for self
         depth_maps = []
         for idx, camera_data in enumerate(selected_cav_base["camera_data"]):
-            print(camera_intrinsic[idx])
-            depth_maps.append(self.generate_depth_map(idx, np.array(camera_data), lidar_np, camera_intrinsic[idx], camera_to_lidar_matrix[idx], imgH, imgW, draws=True))
+            depth_maps.append(self.generate_depth_map(idx, np.array(camera_data), lidar_np, camera_intrinsic[idx], camera_to_lidar_matrix[idx], imgH, imgW, draws=False))
         # ============================================================================================================
         # create depth map for ego
-        xyzi_for_ego[:, :3] = projected_lidar[:,:3]
-        int_matrix_for_ego = np.array(ego_cav_base['params']["camera_intrinsic"]).reshape(4,3,3).astype(np.float32)
-        ext_matrix_for_ego = np.array(ego_cav_base['params']['camera2lidar_matrix']).reshape(4,4,4).astype(np.float32)
-        depth_maps_for_ego = []
-        for idx, camera_data in enumerate(selected_cav_base["camera_data"]):
-            print(idx)
-            depth_maps_for_ego.append(self.generate_depth_map(idx, np.array(camera_data), xyzi_for_ego, int_matrix_for_ego[idx], ext_matrix_for_ego[idx], imgH, imgW, draws=False))
-        depth_maps = np.array(depth_maps)
-        print(depth_maps.shape)
-        depth_map = torch.stack([depth_maps, np.array(depth_maps_for_ego)])  # torch.Size([2, 1, 360, 480])
-        print(depth_map.shape)
+        #xyzi_for_ego[:, :3] = projected_lidar[:,:3]
+        #int_matrix_for_ego = np.array(ego_cav_base['params']["camera_intrinsic"]).reshape(4,3,3).astype(np.float32)
+        #ext_matrix_for_ego = np.array(ego_cav_base['params']['camera2lidar_matrix']).reshape(4,4,4).astype(np.float32)
+        #depth_maps_for_ego = []
+        #for idx, camera_data in enumerate(selected_cav_base["camera_data"]):
+        #    depth_maps_for_ego.append(self.generate_depth_map(idx, np.array(camera_data), xyzi_for_ego, int_matrix_for_ego[idx], ext_matrix_for_ego[idx], imgH, imgW, draws=False))
+        #depth_maps = np.array(depth_maps)
+        #depth_map = torch.stack([depth_maps, np.array(depth_maps_for_ego)])  # torch.Size([2, 1, 360, 480])
         # ============================================================================================================
-        selected_cav_processed["image_inputs"].update({"depth_map": depth_map})
+        depth_maps = torch.concat(depth_maps, dim=0)
+        selected_cav_processed["image_inputs"].update({"depth_map": depth_maps})
 
         # velocity
         velocity = selected_cav_base['params']['ego_speed']
@@ -693,62 +762,30 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         
         return depth_map
 
-    @staticmethod
-    def merge_features_to_dict(processed_feature_list):
-        """
-        Merge the preprocessed features from different cavs to the same
-        dictionary.
-
-        Parameters
-        ----------
-        processed_feature_list : list
-            A list of dictionary containing all processed features from
-            different cavs.
-
-        Returns
-        -------
-        merged_feature_dict: dict
-            key: feature names, value: list of features.
-        """
-
-        merged_feature_dict = OrderedDict()
-
-        for i in range(len(processed_feature_list)):
-            for feature_name, feature in processed_feature_list[i].items():
-                if feature_name not in merged_feature_dict:
-                    merged_feature_dict[feature_name] = []
-                if isinstance(feature, list):
-                    merged_feature_dict[feature_name] += feature
-                else:
-                    merged_feature_dict[feature_name].append(feature)
-
-        return merged_feature_dict
-
     def collate_batch_train(self, batch):
         # Intermediate fusion is different the other two
-        output_dict = {'ego': {}}
 
+        record_len = [] # used to record different scenario
+        lidar_poses = []
+
+        img_pairwise_t_matrix_list = [] # pairwise transformation matrix for image
+        pairwise_t_matrix_list = [] # pairwise transformation matrix
+        processed_lidar_list = []
+        image_inputs_list = []
+        label_dict_list = []
+
+        object_ids = []
         object_bbx_center = []
         object_bbx_mask = []
-        object_ids = []
-        processed_lidar_list = []
-        # used to record different scenario
-        record_len = []
-        label_dict_list = []
 
         # used for PriorEncoding for models
         velocity = []
         time_delay = []
         infra = []
 
-        # pairwise transformation matrix
-        pairwise_t_matrix_list = []
-
         # used for correcting the spatial transformation between delayed timestamp
         # and current timestamp
         spatial_correction_matrix_list = []
-
-        lidar_poses = []
         ego_flag = []
 
         if self.visualize:
@@ -756,22 +793,23 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
 
         for i in range(len(batch)):
             ego_dict = batch[i]['ego']
+            record_len.append(ego_dict['cav_num'])
+            lidar_poses.append(ego_dict['lidar_pose'])
+            img_pairwise_t_matrix_list.append(ego_dict['img_pairwise_t_matrix'])
+            pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
+            processed_lidar_list.append(ego_dict['processed_lidar'])
+            image_inputs_list.append(ego_dict['image_inputs']) # different cav_num, ego_dict['image_inputs'] is dict.
+            label_dict_list.append(ego_dict['label_dict'])
+            object_ids.append(ego_dict['object_ids'])
             object_bbx_center.append(ego_dict['object_bbx_center'])
             object_bbx_mask.append(ego_dict['object_bbx_mask'])
-            object_ids.append(ego_dict['object_ids'])
 
-            processed_lidar_list.append(ego_dict['processed_lidar'])
-            record_len.append(ego_dict['cav_num'])
-            label_dict_list.append(ego_dict['label_dict'])
-            pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
 
             velocity.append(ego_dict['velocity'])
             time_delay.append(ego_dict['time_delay'])
             infra.append(ego_dict['infra'])
-            spatial_correction_matrix_list.append(
-                ego_dict['spatial_correction_matrix'])
+            spatial_correction_matrix_list.append(ego_dict['spatial_correction_matrix'])
 
-            lidar_poses.append(ego_dict['lidar_pose'])
             ego_flag.append(ego_dict['ego_flag'])
 
             if self.visualize:
@@ -782,40 +820,46 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
 
         # example: {'voxel_features':[np.array([1,2,3]]),
         # np.array([3,5,6]), ...]}
-        merged_feature_dict = self.merge_features_to_dict(processed_lidar_list)
-        processed_lidar_torch_dict = \
-            self.pre_processor.collate_batch(merged_feature_dict)
+        merged_feature_dict = merge_features_to_dict(processed_lidar_list)
+        processed_lidar_torch_dict = self.pre_processor.collate_batch(merged_feature_dict)
+        merged_image_inputs_dict = merge_features_to_dict(image_inputs_list, merge='cat')
+
         # [2, 3, 4, ..., M], M <= max_cav
         record_len = torch.from_numpy(np.array(record_len, dtype=int))
-        label_torch_dict = \
-            self.post_processor.collate_batch(label_dict_list)
+        label_torch_dict = self.post_processor.collate_batch(label_dict_list)
 
         # (B, max_cav)
         velocity = torch.from_numpy(np.array(velocity))
         time_delay = torch.from_numpy(np.array(time_delay))
         infra = torch.from_numpy(np.array(infra))
-        spatial_correction_matrix_list = \
-            torch.from_numpy(np.array(spatial_correction_matrix_list))
+        spatial_correction_matrix_list = torch.from_numpy(np.array(spatial_correction_matrix_list))
         # (B, max_cav, 3)
-        prior_encoding = \
-            torch.stack([velocity, time_delay, infra], dim=-1).float()
+        prior_encoding = torch.stack([velocity, time_delay, infra], dim=-1).float()
         # (B, max_cav)
         pairwise_t_matrix = torch.from_numpy(np.array(pairwise_t_matrix_list))
+        img_pairwise_t_matrix = torch.from_numpy(np.array(img_pairwise_t_matrix_list))
 
         # object id is only used during inference, where batch size is 1.
         # so here we only get the first element.
-        output_dict['ego'].update({'object_bbx_center': object_bbx_center,
-                                   'object_bbx_mask': object_bbx_mask,
-                                   'processed_lidar': processed_lidar_torch_dict,
-                                   'record_len': record_len,
-                                   'label_dict': label_torch_dict,
-                                   'object_ids': object_ids[0],
-                                   'prior_encoding': prior_encoding,
-                                   'spatial_correction_matrix': spatial_correction_matrix_list,
-                                   'pairwise_t_matrix': pairwise_t_matrix,
-                                   'lidar_pose': lidar_poses,
-                                   'ego_flag': ego_flag
-        })
+        output_dict = {
+            'ego': {
+                'object_bbx_center': object_bbx_center,
+                'object_bbx_mask': object_bbx_mask,
+                'object_ids': object_ids[0],
+                'label_dict': label_torch_dict,
+                
+                'processed_lidar': processed_lidar_torch_dict,
+                'image_inputs': merged_image_inputs_dict,
+                'record_len': record_len,
+                'prior_encoding': prior_encoding,
+                'spatial_correction_matrix': spatial_correction_matrix_list,
+                'pairwise_t_matrix': pairwise_t_matrix,
+                'img_pairwise_t_matrix': img_pairwise_t_matrix,
+                'lidar_pose': lidar_poses,
+                'ego_flag': ego_flag
+            }
+        }
+
 
         if self.visualize:
             origin_lidar = np.array(pcd_utils.downsample_lidar_minimum(pcd_np_list=origin_lidar))
@@ -830,16 +874,11 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
 
         # check if anchor box in the batch
         if batch[0]['ego']['anchor_box'] is not None:
-            output_dict['ego'].update({'anchor_box':
-                torch.from_numpy(np.array(
-                    batch[0]['ego'][
-                        'anchor_box']))})
+            output_dict['ego'].update({'anchor_box': torch.from_numpy(np.array(batch[0]['ego']['anchor_box']))})
 
         # save the transformation matrix (4, 4) to ego vehicle
-        transformation_matrix_torch = \
-            torch.from_numpy(np.identity(4)).float()
-        output_dict['ego'].update({'transformation_matrix':
-                                       transformation_matrix_torch})
+        transformation_matrix_torch = torch.from_numpy(np.identity(4)).float()
+        output_dict['ego'].update({'transformation_matrix': transformation_matrix_torch})
 
         return output_dict
 
@@ -862,14 +901,13 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         gt_box_tensor : torch.Tensor
             The tensor of gt bounding box.
         """
-        pred_box_tensor, pred_score = \
-            self.post_processor.post_process(data_dict, output_dict)
+        pred_box_tensor, pred_score = self.post_processor.post_process(data_dict, output_dict)
         gt_box_tensor = self.post_processor.generate_gt_bbx(data_dict)
 
         return pred_box_tensor, pred_score, gt_box_tensor
-
+    """
     def get_pairwise_transformation(self, base_data_dict, max_cav):
-        """
+        
         Get pair-wise transformation matrix accross different agents.
 
         Parameters
@@ -885,7 +923,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         pairwise_t_matrix : np.array
             The pairwise transformation matrix across each cav.
             shape: (L, L, 4, 4)
-        """
+        
         pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
 
         if self.proj_first:
@@ -911,3 +949,49 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
                     pairwise_t_matrix[i, j] = t_matrix
 
         return pairwise_t_matrix
+    """
+    def get_pairwise_transformation(self, base_data_dict, max_cav):
+        """
+        Get pair-wise transformation matrix accross different agents.
+
+        Parameters
+        ----------
+        base_data_dict : dict
+            Key : cav id, item: transformation matrix to ego, lidar points.
+
+        max_cav : int
+            The maximum number of cav, default 5
+
+        Return
+        ------
+        pairwise_t_matrix : np.array
+            The pairwise transformation matrix across each cav.
+            shape: (L, L, 4, 4)
+        """
+        identity_pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
+        pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
+
+        
+        # if lidar projected to ego first, then the pairwise matrix becomes identity
+        identity_pairwise_t_matrix[:, :] = np.identity(4)
+        
+        # save all transformation matrix in a list in order first.
+        t_list = []
+        for cav_id, cav_content in base_data_dict.items():
+            t_list.append(cav_content['params']['transformation_matrix'])
+
+        for i in range(len(t_list)):
+            for j in range(len(t_list)):
+                # identity matrix to self
+                if i == j:
+                    t_matrix = np.eye(4)
+                    pairwise_t_matrix[i, j] = t_matrix
+                    continue
+                # i->j: TiPi=TjPj, Tj^(-1)TiPi = Pj
+                t_matrix = np.dot(np.linalg.inv(t_list[j]), t_list[i])
+                pairwise_t_matrix[i, j] = t_matrix
+
+        if self.proj_first:
+            return identity_pairwise_t_matrix, pairwise_t_matrix
+        else:
+            return pairwise_t_matrix, pairwise_t_matrix
