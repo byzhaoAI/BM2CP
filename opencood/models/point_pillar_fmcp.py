@@ -10,6 +10,7 @@ from einops import rearrange
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from opencood.models.common_modules.pillar_vfe import PillarVFE
 from opencood.models.common_modules.point_pillar_scatter import PointPillarScatter
@@ -28,7 +29,8 @@ class MultiModalFusion(nn.Module):
     def __init__(self, num_modality, dim):
         super().__init__()
         self.adapt_conv = nn.Conv2d(dim*num_modality, dim, kernel_size=1)
-        self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
+        self.mlp = nn.Linear(dim, dim)
+        self.relu = nn.ReLU()
 
     def forward(self, feats, modality_adapter):
         fused_feat_list = []
@@ -40,12 +42,12 @@ class MultiModalFusion(nn.Module):
         
         B, C, H, W = fused_feat.shape
         fused_feat = rearrange(fused_feat, 'b c h w -> (h w) b c')        
-        fused_feat_list = []
+        retrived_feat = 0
         for feat in feats:
             score = torch.bmm(rearrange(feat, 'b c h w -> (h w) b c'), fused_feat.transpose(1, 2)) / np.sqrt(C)
             attn = F.softmax(score, -1)
-            fused_feat_list.append(torch.bmm(attn, value))
-        fused_feat = fused_feat + self.conv(torch.sum(fused_feat_list))
+            retrived_feat = retrived_feat + torch.bmm(attn, fused_feat)
+        fused_feat = fused_feat + self.relu(self.mlp(retrived_feat))
         fused_feat = rearrange(fused_feat, '(h w) b c -> b c h w', h=H, w=W)
         return fused_feat
     
@@ -250,7 +252,6 @@ class PointPillarFMCP(nn.Module):
             output_dict.update({"dm": dm})
 
         output_dict.update({
-            'mask': mask,
             'comm_rate': communication_rates
         })
 
