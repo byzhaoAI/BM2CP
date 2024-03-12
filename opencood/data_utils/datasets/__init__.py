@@ -24,7 +24,7 @@ __all__ = {
     'IntermediateFusionDatasetOPV2V': IntermediateFusionDatasetOPV2V,
     'IntermediateFusionDatasetOPV2V_V2': IntermediateFusionDatasetOPV2V_V2,
     'IntermediateFusionDatasetOPV2V_Multi': IntermediateFusionDatasetOPV2V_MULTI,
-    'IntermediateFusionDatasetOPV2V_Multi_How2comm': IntermediateFusionDatasetOPV2V_MULTI_HOW2COMM
+    'IntermediateFusionDatasetOPV2V_Multi_How2comm': IntermediateFusionDatasetOPV2V_MULTI_HOW2COMM,
     'LateFusionDatasetOPV2V': LateFusionDatasetOPV2V,
     'LiDARCameraIntermediateFusionDatasetOPV2V': LiDARCameraIntermediateFusionDatasetOPV2V,
     'LiDARCameraIntermediateFusionDatasetOPV2VV2': LiDARCameraIntermediateFusionDatasetOPV2V_V2,
