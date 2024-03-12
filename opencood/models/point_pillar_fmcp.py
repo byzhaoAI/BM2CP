@@ -5,14 +5,11 @@ Authors: Jonah Philion and Sanja Fidler
 
 Intermediate fusion for camera based collaboration
 """
+import numpy as np
+from einops import rearrange
 
-from numpy import record
 import torch
 from torch import nn
-from einops import rearrange
-# from efficientnet_pytorch import EfficientNet
-from torchvision.models.resnet import resnet18
-# from icecream import ic
 
 from opencood.models.common_modules.pillar_vfe import PillarVFE
 from opencood.models.common_modules.point_pillar_scatter import PointPillarScatter
