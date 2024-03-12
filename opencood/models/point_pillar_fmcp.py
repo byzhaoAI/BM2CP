@@ -9,6 +9,7 @@ Intermediate fusion for camera based collaboration
 from numpy import record
 import torch
 from torch import nn
+from einops import rearrange
 # from efficientnet_pytorch import EfficientNet
 from torchvision.models.resnet import resnet18
 # from icecream import ic
@@ -40,12 +41,15 @@ class MultiModalFusion(nn.Module):
         fused_feat = torch.concat(fused_feat_list, dim=1)
         fused_feat = self.adapt_conv(fused_feat)
         
+        B, C, H, W = fused_feat.shape
+        fused_feat = rearrange(fused_feat, 'b c h w -> (h w) b c')        
         fused_feat_list = []
         for feat in feats:
-            score = torch.bmm(feat, fused_feat.transpose(1, 2)) / self.sqrt_dim
+            score = torch.bmm(rearrange(feat, 'b c h w -> (h w) b c'), fused_feat) / self.sqrt_dim
             attn = F.softmax(score, -1)
             fused_feat_list.append(torch.bmm(attn, value))
         fused_feat = fused_feat + self.conv(torch.sum(fused_feat_list))
+        fused_feat = rearrange(fused_feat, '(h w) b c -> b c h w', h=H, w=W)
         return fused_feat
     
 class PointPillarFMCP(nn.Module):
