@@ -37,7 +37,7 @@ class MultiModalFusion(nn.Module):
         for i in range(len(feats)):
             embed = modality_adapter.weight[0].unsqueeze(-1).unsqueeze(-1)
             fused_feat_list.append(embed * feats[i])
-        fused_feat = torch.concat(fused_feat_list, dim=0)
+        fused_feat = torch.concat(fused_feat_list, dim=1)
         fused_feat = self.adapt_conv(fused_feat)
         
         fused_feat_list = []
