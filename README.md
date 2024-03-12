@@ -37,7 +37,7 @@
     - [x] [CoAlign (ICRA2023)](https://arxiv.org/abs/2211.07214)
     - [x] [BM2CP (CoRL2023)](https://arxiv.org/abs/2310.14702) (Coming soon for OPV2V dataset)
     - [x] [SCOPE (ICCV2023)](https://arxiv.org/abs/2307.13929)
-    - [x] [How2comm (NeurIPS2023)]((https://openreview.net/pdf?id=Dbaxm9ujq6))
+    - [x] [How2comm (NeurIPS2023)](https://openreview.net/pdf?id=Dbaxm9ujq6)
 
 - Visualization
   - [x] BEV visualization
