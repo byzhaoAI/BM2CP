@@ -7,6 +7,7 @@
 
 
 ## Updates
+- 2024/03/12 Support How2comm(NeurIPS2023).
 - 2024/01/28 Support OPV2V dataset. Support SCOPE(ICCV2023). Fix bugs in fusion dataset that cause abnormal performance in presence of pose error. 
 - 2023/11/30 First version.
 
@@ -36,7 +37,7 @@
     - [x] [CoAlign (ICRA2023)](https://arxiv.org/abs/2211.07214)
     - [x] [BM2CP (CoRL2023)](https://arxiv.org/abs/2310.14702) (Coming soon for OPV2V dataset)
     - [x] [SCOPE (ICCV2023)](https://arxiv.org/abs/2307.13929)
-    - [ ] How2comm (NeurIPS2023) Coming soon ...
+    - [x] [How2comm (NeurIPS2023)]((https://openreview.net/pdf?id=Dbaxm9ujq6))
 
 - Visualization
   - [x] BEV visualization
@@ -130,6 +131,10 @@ Thanks for the insightful previous works in cooperative perception field.
 **Where2comm: Communication-Efficient Collaborative Perception via Spatial Confidence Maps** *NeurIPS2022* [[Paper]](https://arxiv.org/abs/2209.12836) [[Code]](https://github.com/MediaBrain-SJTU/Where2comm)
 
 **Spatio-Temporal Domain Awareness for Multi-Agent Collaborative Perception** *ICCV2023* [[Paper]](https://arxiv.org/abs/2307.13929)[[Code]](https://github.com/starfdu1418/SCOPE)
+
+**How2comm: Communication-Efficient and Collaboration-Pragmatic Multi-Agent Perceptio** *NeurIPS2023* [[Paper]](https://openreview.net/pdf?id=Dbaxm9ujq6) [[Code]](https://github.com/ydk122024/How2comm)
+
+
 ### Datasets
 
 **OPV2V: An Open Benchmark Dataset and Fusion Pipeline for Perception with Vehicle-to-Vehicle Communication** 
