@@ -45,7 +45,7 @@ class MultiModalFusion(nn.Module):
         fused_feat = rearrange(fused_feat, 'b c h w -> (h w) b c')        
         fused_feat_list = []
         for feat in feats:
-            score = torch.bmm(rearrange(feat, 'b c h w -> (h w) b c'), fused_feat.transpose(1, 2)) / self.sqrt_dim
+            score = torch.bmm(rearrange(feat, 'b c h w -> (h w) b c'), fused_feat.transpose(1, 2)) / np.sqrt(C)
             attn = F.softmax(score, -1)
             fused_feat_list.append(torch.bmm(attn, value))
         fused_feat = fused_feat + self.conv(torch.sum(fused_feat_list))
