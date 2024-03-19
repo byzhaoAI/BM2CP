@@ -133,7 +133,7 @@ class ImportanceFusion(nn.Module):
         score = self.relu(self.mlp(score)).sigmoid()
         
         mask = torch.where(score > 0.5, 1, 0)
-        ego_mask = torch.ones((H*w, 1, 1)).to(ego_node_feature.device)
+        ego_mask = torch.ones((H*W, 1, 1)).to(ego_node_feature.device)
         overall_mask = torch.concat([ego_mask, mask], dim=1)        
 
         node_feature = rearrange(node_feature * overall_mask, '(h w) l c-> l c h w', h=H, w=W)
