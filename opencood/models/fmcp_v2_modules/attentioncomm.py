@@ -135,11 +135,10 @@ class ImportanceFusion(nn.Module):
         mask = torch.where(score > 0.5, 1, 0)
         ego_mask = torch.ones((H*W, 1, 1)).to(ego_node_feature.device)
         overall_mask = torch.concat([ego_mask, mask], dim=1)        
-
-        node_feature = rearrange(node_feature * overall_mask, '(h w) l c-> l c h w', h=H, w=W)
+        node_feature = node_feature * overall_mask
         
-        query = node_feature[0].unsqueeze(0)
-        node_feature = self.att_forward(query, node_feature, node_feature, C)
+        node_feature = self.att_forward(ego_node_feature, node_feature, node_feature, C)
+        node_feature = rearrange(node_feature, '(h w) l c-> l c h w', h=H, w=W)
         return node_feature
 
     def att_forward(self, query, key, value, C):
