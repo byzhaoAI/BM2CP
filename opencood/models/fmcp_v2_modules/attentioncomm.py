@@ -139,7 +139,7 @@ class ImportanceFusion(nn.Module):
         node_feature = rearrange(node_feature * overall_mask, '(h w) l c-> l c h w', h=H, w=W)
         
         query = node_feature[0].unsqueeze(0)
-        node_feature = self.att_forward(query, node_feature)
+        node_feature = self.att_forward(query, node_feature, node_feature, C)
         return node_feature
 
     def att_forward(self, query, key, value, C):
