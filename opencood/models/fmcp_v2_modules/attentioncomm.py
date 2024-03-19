@@ -121,7 +121,7 @@ class ImportanceFusion(nn.Module):
         self.mlp = nn.Linear(feature_dim, 1)
         self.relu = nn.ReLU()
 
-    def forward(node_feature):
+    def forward(self, node_feature):
         # node_features: (L, CV H, W)
         L, C, H, W = node_feature.shape
 
