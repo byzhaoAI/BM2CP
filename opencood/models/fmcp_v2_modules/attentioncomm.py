@@ -146,7 +146,7 @@ class ImportanceFusion(nn.Module):
         score = torch.bmm(query, key.transpose(1, 2)) / np.sqrt(C)
         attn = F.softmax(score, -1)
         context = torch.bmm(attn, value)
-        return x
+        return context
 
 
 class AttenComm(nn.Module):
