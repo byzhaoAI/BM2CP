@@ -249,7 +249,8 @@ class AttenComm(nn.Module):
             
             if len(backbone.deblocks) > self.num_levels:
                 x_fuse = backbone.deblocks[-1](x_fuse)
-        
+            
+            communication_rates = 0
         else:
             # split x:[(L1, C, H, W), (L2, C, H, W), ...]
             # for example [[2, 256, 50, 176], [1, 256, 50, 176], ...]
