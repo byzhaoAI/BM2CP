@@ -138,9 +138,9 @@ class ImportanceFusion(nn.Module):
 
         node_feature = rearrange(node_feature * overall_mask, '(h w) l c-> l c h w', h=H, w=W)
         
-        query = neighbor_feature[0].unsqueeze(0)
-        neighbor_feature = self.att_forward(query, neighbor_feature)
-        return neighbor_feature
+        query = node_feature[0].unsqueeze(0)
+        node_feature = self.att_forward(query, node_feature)
+        return node_feature
 
     def att_forward(self, query, key, value, C):
         score = torch.bmm(query, key.transpose(1, 2)) / np.sqrt(C)
