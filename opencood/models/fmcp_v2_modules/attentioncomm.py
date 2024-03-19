@@ -116,7 +116,7 @@ def communication(batch_confidence_maps, record_len, pairwise_t_matrix):
 
 class ImportanceFusion(nn.Module):
     def __init__(self, feature_dim):
-        super(AttenFusion, self).__init__()
+        super(ImportanceFusion, self).__init__()
         # self.att = ScaledDotProductAttention(feature_dim)
         self.mlp = nn.Linear(feature_dim, 1)
         self.relu = nn.ReLU()
@@ -135,7 +135,7 @@ class ImportanceFusion(nn.Module):
         mask = torch.where(score > 0.5, 1, 0)
         ego_mask = torch.ones((H*w, 1, 1)).to(ego_node_feature.device)
         overall_mask = torch.concat([ego_mask, mask], dim=1)        
-        
+
         node_feature = rearrange(node_feature * overall_mask, '(h w) l c-> l c h w', h=H, w=W)
         
         query = neighbor_feature[0].unsqueeze(0)
