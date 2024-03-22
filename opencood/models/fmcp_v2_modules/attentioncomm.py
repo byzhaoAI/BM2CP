@@ -127,9 +127,11 @@ class ImportanceFusion(nn.Module):
 
         # (H*W, cav_num, C), perform attention on each pixel.
         node_feature = rearrange(node_feature, 'l c h w -> (h w) l c')
-        ego_node_feature = node_feature[:, 0, :].view(-1, 1, C)
-        neighbor_node_feature = node_feature[:, 1:, :].view(-1, L-1, C)
-        score = self.att_forward(ego_node_feature, neighbor_node_feature, neighbor_node_feature, C)
+        ego_node_feature = node_feature[:, 0, :].unsqueeze(1)
+        neighbor_node_feature = node_feature[:, 1:, :]
+        if neighbor_node_feature.dim() != 3:
+            neighbor_node_feature = neighbor_node_feature.unsqueeze(1)
+        score = self.att_forward(neighbor_node_feature, ego_node_feature, ego_node_feature, C)
         score = self.relu(self.mlp(score)).sigmoid()
         
         mask = torch.where(score > 0.5, 1, 0)
