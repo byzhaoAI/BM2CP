@@ -130,17 +130,15 @@ class ImportanceFusion(nn.Module):
         ego_node_feature = node_feature[:, 0, :].unsqueeze(1)
         
         if L > 1:
-            neighbor_node_feature = node_feature[:, 1:, :]
-            if neighbor_node_feature.dim() != 3:
-                neighbor_node_feature = neighbor_node_feature.unsqueeze(1)
-            score = self.att_forward(ego_node_feature.repeat(1, L-1, 1),
-                                     neighbor_node_feature, neighbor_node_feature, C)
-            score = self.relu(self.mlp(score)).sigmoid()
-            
-            mask = torch.where(score > 0.5, 1, 0)
-            ego_mask = torch.ones((H*W, 1, 1)).to(ego_node_feature.device)
-            overall_mask = torch.concat([ego_mask, mask], dim=1)        
-            node_feature = node_feature * overall_mask
+            mask = [torch.ones((H*W, 1, 1)).to(ego_node_feature.device)]
+            for i in range(1, L):
+                neighbor_node_feature = node_feature[:, i, :].unsqueeze(1)
+                score = self.att_forward(ego_node_feature, neighbor_node_feature, neighbor_node_feature, C)
+                score = self.relu(self.mlp(score)).sigmoid()
+                mask.append(torch.where(score > 0.5, 1, 0))
+
+            mask = torch.concat(mask, dim=1)        
+            node_feature = node_feature * mask
         
         node_feature = self.att_forward(ego_node_feature, node_feature, node_feature, C)
         node_feature = rearrange(node_feature, '(h w) l c-> l c h w', h=H, w=W)
