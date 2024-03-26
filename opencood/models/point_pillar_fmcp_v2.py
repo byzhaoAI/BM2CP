@@ -32,35 +32,24 @@ class MultiModalFusion(nn.Module):
         self.mlp = nn.Linear(dim, dim)
         self.relu = nn.ReLU()
 
-    def forward(self, feats, modality_adapter, record_len):
-        fused_feat = []
-        batch_feats = []
+    def forward(self, feats, modality_adapter):
+        fused_feat_list = []
         for i in range(len(feats)):
             embed = modality_adapter.weight[i].unsqueeze(-1).unsqueeze(-1)
-            fused_feat.append(embed * feats[i])
-            batch_feats.append(self.regroup(feats[i], record_len))
-        fused_feat = torch.concat(fused_feat, dim=1)
+            fused_feat_list.append(embed * feats[i])
+        fused_feat = torch.concat(fused_feat_list, dim=1)
         fused_feat = self.adapt_conv(fused_feat)
         
         B, C, H, W = fused_feat.shape
-        batch_fused_feat = self.regroup(fused_feat, record_len)
         fused_feat = rearrange(fused_feat, 'b c h w -> (h w) b c')        
-        
-        retrived_feat = [0] * len(record_len)
-        for i in range(len(record_len)):
-            for feat in batch_feats:
-                score = torch.bmm(rearrange(feat[i], 'b c h w -> (h w) b c'), fused_feat.transpose(1, 2)) / np.sqrt(C)
-                attn = F.softmax(score, -1)
-                retrived_feat[i] = retrived_feat[i] + torch.bmm(attn, fused_feat)
-        retrived_feat = torch.cat(retrived_feat, 1)
+        retrived_feat = 0
+        for feat in feats:
+            score = torch.bmm(rearrange(feat, 'b c h w -> (h w) b c'), fused_feat.transpose(1, 2)) / np.sqrt(C)
+            attn = F.softmax(score, -1)
+            retrived_feat = retrived_feat + torch.bmm(attn, fused_feat)
         fused_feat = fused_feat + self.relu(self.mlp(retrived_feat))
         fused_feat = rearrange(fused_feat, '(h w) b c -> b c h w', h=H, w=W)
         return fused_feat
-
-    def regroup(self, x, record_len):
-        cum_sum_len = torch.cumsum(record_len, dim=0)
-        split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
-        return split_x
     
 class PointPillarFMCPV2(nn.Module):
     def create_frustum(self):
@@ -223,7 +212,7 @@ class PointPillarFMCPV2(nn.Module):
         x = torch.cat(x.unbind(dim=2), 1)  # 消除掉z维
         
         # voxel下的模态融合 img: B*C*Z*Y*X; pc: B*C*Z*Y*X
-        x = self.fusion([x, batch_dict['spatial_features']], self.modality_adapter, record_len)
+        x = self.fusion([x, batch_dict['spatial_features']], self.modality_adapter)
         batch_dict['spatial_features'] = x
         batch_dict = self.backbone(batch_dict)
         spatial_features_2d = batch_dict['spatial_features_2d']

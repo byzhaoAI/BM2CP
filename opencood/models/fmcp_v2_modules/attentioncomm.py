@@ -127,18 +127,17 @@ class ImportanceFusion(nn.Module):
 
         # (H*W, cav_num, C), perform attention on each pixel.
         node_feature = rearrange(node_feature, 'l c h w -> (h w) l c')
-        ego_node_feature = node_feature[:, 0, :].unsqueeze(1)
+        ego_node_feature = node_feature[:, 0, :].view(-1, 1, C)
         
         if L > 1:
-            mask = [torch.ones((H*W, 1, 1)).to(ego_node_feature.device)]
-            for i in range(1, L):
-                neighbor_node_feature = node_feature[:, i, :].unsqueeze(1)
-                score = self.att_forward(ego_node_feature, neighbor_node_feature, neighbor_node_feature, C)
-                score = self.relu(self.mlp(score)).sigmoid()
-                mask.append(torch.where(score > 0.5, 1, 0))
-
-            mask = torch.concat(mask, dim=1)        
-            node_feature = node_feature * mask
+            neighbor_node_feature = node_feature[:, 1:, :].view(-1, L-1, C)
+            score = self.att_forward(ego_node_feature.repeat(1,L-1,1), neighbor_node_feature, neighbor_node_feature, C)
+            score = self.relu(self.mlp(score)).sigmoid()
+            
+            mask = torch.where(score > 0.5, 1, 0)
+            ego_mask = torch.ones((H*W, 1, 1)).to(ego_node_feature.device)
+            overall_mask = torch.concat([ego_mask, mask], dim=1)        
+            node_feature = node_feature * overall_mask
         
         node_feature = self.att_forward(ego_node_feature, node_feature, node_feature, C)
         node_feature = rearrange(node_feature, '(h w) l c-> l c h w', h=H, w=W)
