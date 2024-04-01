@@ -173,6 +173,97 @@ class PointPillarFMCPV2(nn.Module):
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
 
+    def mask_modality(self, x, y, adapter, record_len):
+        """
+        # 1. C+L / L and L / C+L
+        split_x = self.regroup(x, record_len)
+        new_x = []
+        for _x in split_x:
+            B, L, C, H, W = _x.shape
+            
+            if B > 1:
+                new_x.append(torch.cat([_x[0].unsqueeze(0), torch.zeros(B-1, L, C, H, W).to(_x.device)]))
+            else:
+                new_x.append(_x)
+            
+            if B > 1:
+                _other = _x[1:]
+                if _other.dim() == 4:
+                    _other = _other.unsqueeze(0)
+                new_x.append(torch.cat([torch.zeros(1, L, C, H, W).to(_x.device), _other]))
+            else:
+                new_x.append(torch.zeros(_x.shape).to(_x.device))
+            
+        new_x = torch.cat(new_x)
+        new_y = y
+        new_adapter = adapter
+        
+        # 2. C+L / C and C / C+L
+        split_y = self.regroup(y, record_len)
+        new_y = []
+        for _y in split_y:
+            B, C, H, W = _y.shape
+            
+            if B > 1:    
+                new_y.append(torch.cat([_y[0].unsqueeze(0), torch.zeros(B-1, C, H, W).to(_y.device)]))
+            else:
+                new_y.append(_y)
+            
+            if B > 1:
+                _other = _y[1:]
+                if _other.dim() == 3:
+                    _other = _other.unsqueeze(0)
+                new_y.append(torch.cat([torch.zeros(1, C, H, W).to(_y.device), _other]))
+            else:
+                new_y.append(torch.zeros(_y.shape).to(_y.device))
+            
+        new_y = torch.cat(new_y)
+        new_x = x
+        new_adapter = adapter
+        
+
+        # 3. L/L and C/C
+        new_x = torch.zeros(x.shape).to(x.device)
+        new_y = y
+
+        new_x = x
+        new_y = torch.zeros(y.shape).to(y.device)
+        """
+        # 4. L/C and C/L
+        split_x = self.regroup(x, record_len)
+        split_y = self.regroup(y, record_len)
+        new_x, new_y = [], []
+        for _x, _y in zip(split_x, split_y):
+            _B, L, _, _H, _W = _x.shape
+            B, C, H, W = _y.shape
+            assert _B == B
+            """
+            # C + L
+            if B > 1:
+                new_x.append(torch.cat([_x[0].unsqueeze(0), torch.zeros(B-1, L, 3, _H, _W).to(_x.device)]))
+                _other = _y[1:]
+                if _other.dim() == 3:
+                    _other = _other.unsqueeze(0)
+                new_y.append(torch.cat([torch.zeros(1, C, H, W).to(_y.device), _other]))
+            else:
+                new_x.append(_x)
+                new_y.append(torch.zeros(_y.shape).to(_y.device))
+            """
+            # L + C
+            if B > 1:
+                new_y.append(torch.cat([_y[0].unsqueeze(0), torch.zeros(B-1, C, H, W).to(_y.device)]))
+                _other = _x[1:]
+                if _other.dim() == 4:
+                    _other = _other.unsqueeze(0)
+                new_x.append(torch.cat([torch.zeros(1, L, 3, _H, _W).to(_x.device), _other]))
+            else:
+                new_y.append(_y)
+                new_x.append(torch.zeros(_x.shape).to(_x.device))
+            
+        new_x, new_y = torch.cat(new_x), torch.cat(new_y)
+        return new_x, new_y, adapter
+
+
     def forward(self, data_dict):   # loss: 5.91->0.76
         # get two types data
         image_inputs_dict = data_dict['image_inputs']
@@ -201,6 +292,9 @@ class PointPillarFMCPV2(nn.Module):
         geom = self.get_geometry(image_inputs_dict)  # 像素坐标到自车中坐标的映射关系 geom: B x N x D x H x W x 3
         # get_cam_feats, 提取图像特征并预测深度编码 x: B x N x D x fH x fW x C(4 x N x 42 x 16 x 22 x 64) Return B x N x D x H/downsample x W/downsample x C
         x = image_inputs_dict['imgs']
+
+        x, spatial_features, modality_adapter = self.mask_modality(x, batch_dict['spatial_features'], self.modality_adapter, record_len)
+
         B, N, C, imH, imW = x.shape     # torch.Size([4, 1, 3, 320, 480])
         x = x.view(B*N, C, imH, imW)  # B和N两个维度合起来  x:  B: 4  N: 4  C: 3  imH: 256  imW: 352 -> 16 x 4 x 256 x 352
         _, x = self.camencode(x)     # x: B*N x C x D x fH x fW(24 x 64 x 41 x 16 x 22) -> 多了一个维度D：代表深度
@@ -212,7 +306,8 @@ class PointPillarFMCPV2(nn.Module):
         x = torch.cat(x.unbind(dim=2), 1)  # 消除掉z维
         
         # voxel下的模态融合 img: B*C*Z*Y*X; pc: B*C*Z*Y*X
-        x = self.fusion([x, batch_dict['spatial_features']], self.modality_adapter)
+        x = self.fusion([x, spatial_features], modality_adapter)
+        #x = self.fusion([x, batch_dict['spatial_features']], self.modality_adapter)
         batch_dict['spatial_features'] = x
         batch_dict = self.backbone(batch_dict)
         spatial_features_2d = batch_dict['spatial_features_2d']
