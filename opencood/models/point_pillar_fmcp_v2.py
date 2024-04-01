@@ -228,7 +228,7 @@ class PointPillarFMCPV2(nn.Module):
 
         new_x = x
         new_y = torch.zeros(y.shape).to(y.device)
-        """
+        
         # 4. L/C and C/L
         split_x = self.regroup(x, record_len)
         split_y = self.regroup(y, record_len)
@@ -237,7 +237,7 @@ class PointPillarFMCPV2(nn.Module):
             _B, L, _, _H, _W = _x.shape
             B, C, H, W = _y.shape
             assert _B == B
-            """
+            
             # C + L
             if B > 1:
                 new_x.append(torch.cat([_x[0].unsqueeze(0), torch.zeros(B-1, L, 3, _H, _W).to(_x.device)]))
@@ -248,7 +248,7 @@ class PointPillarFMCPV2(nn.Module):
             else:
                 new_x.append(_x)
                 new_y.append(torch.zeros(_y.shape).to(_y.device))
-            """
+            
             # L + C
             if B > 1:
                 new_y.append(torch.cat([_y[0].unsqueeze(0), torch.zeros(B-1, C, H, W).to(_y.device)]))
@@ -262,6 +262,8 @@ class PointPillarFMCPV2(nn.Module):
             
         new_x, new_y = torch.cat(new_x), torch.cat(new_y)
         return new_x, new_y, adapter
+        """
+        return x, y, adapter
 
 
     def forward(self, data_dict):   # loss: 5.91->0.76
