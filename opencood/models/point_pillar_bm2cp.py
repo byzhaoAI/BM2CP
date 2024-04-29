@@ -5,6 +5,7 @@
 from numpy import record
 import torch
 from torch import nn
+from einops import rearrange
 from torchvision.models.resnet import resnet18
 
 from opencood.models.common_modules.pillar_vfe import PillarVFE
@@ -227,7 +228,8 @@ class PointPillarBM2CP(nn.Module):
         B, N, C, imH, imW = x.shape     # torch.Size([4, 1, 3, 320, 480])
         x = x.view(B*N, C, imH, imW)
         _, x = self.camencode(x, image_inputs_dict['depth_map'], record_len)
-        x = x.view(B, N, self.bevC, self.D, imH//self.downsample, imW//self.downsample)
+        #x = x.view(B, N, self.bevC, self.D, imH//self.downsample, imW//self.downsample)
+        x = rearrange(x, '(b l) c d h w -> b l c d h w', b=B, l=N)
         x = x.permute(0, 1, 3, 4, 5, 2)  # x: B x N x D x fH x fW x C(4 x 6 x 41 x 16 x 22 x 64)
 
         x = self.voxel_pooling(geom, x)  # x: 4 x 64 x 240 x 240

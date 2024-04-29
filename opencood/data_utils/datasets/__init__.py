@@ -16,7 +16,7 @@ from opencood.data_utils.datasets.dair.early_fusion_dataset import EarlyFusionDa
 from opencood.data_utils.datasets.dair.intermediate_fusion_dataset import IntermediateFusionDatasetDAIR
 from opencood.data_utils.datasets.dair.intermediate_fusion_dataset_multi_frame import IntermediateFusionDatasetDAIR as IntermediateFusionDatasetDAIR_MULTI
 from opencood.data_utils.datasets.dair.late_fusion_dataset import LateFusionDatasetDAIR
-from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset_v0 import LiDARCameraIntermediateFusionDatasetDAIR
+from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset import LiDARCameraIntermediateFusionDatasetDAIR
 from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset_v2 import LiDARCameraIntermediateFusionDatasetDAIR as LiDARCameraIntermediateFusionDatasetDAIR_V2
 
 __all__ = {
@@ -27,14 +27,14 @@ __all__ = {
     'IntermediateFusionDatasetOPV2V_Multi_How2comm': IntermediateFusionDatasetOPV2V_MULTI_HOW2COMM,
     'LateFusionDatasetOPV2V': LateFusionDatasetOPV2V,
     'LiDARCameraIntermediateFusionDatasetOPV2V': LiDARCameraIntermediateFusionDatasetOPV2V,
-    'LiDARCameraIntermediateFusionDatasetOPV2VV2': LiDARCameraIntermediateFusionDatasetOPV2V_V2,
+    'LiDARCameraIntermediateFusionDatasetOPV2V_V2': LiDARCameraIntermediateFusionDatasetOPV2V_V2,
 
     'EarlyFusionDatasetDAIR': EarlyFusionDatasetDAIR,
     'IntermediateFusionDatasetDAIR': IntermediateFusionDatasetDAIR,
     'IntermediateFusionDatasetDAIR_Multi': IntermediateFusionDatasetDAIR_MULTI,
     'LateFusionDatasetDAIR': LateFusionDatasetDAIR,
     'LiDARCameraIntermediateFusionDatasetDAIR': LiDARCameraIntermediateFusionDatasetDAIR,
-    'LiDARCameraIntermediateFusionDatasetDAIRV2': LiDARCameraIntermediateFusionDatasetDAIR_V2,
+    'LiDARCameraIntermediateFusionDatasetDAIR_V2': LiDARCameraIntermediateFusionDatasetDAIR_V2,
 }
 
 # the final range for evaluation

@@ -7,6 +7,7 @@
 
 
 ## Updates
+- 2024/04/29 Support BM2CP in OPV2V dataset.
 - 2024/03/12 Support How2comm(NeurIPS2023).
 - 2024/01/28 Support OPV2V dataset. Support SCOPE(ICCV2023). Fix bugs in fusion dataset that cause abnormal performance in presence of pose error. 
 - 2023/11/30 First version.
@@ -19,7 +20,6 @@
   - [ ] V2XSet
   - [ ] V2X-Sim 2.0
   - [x] DAIR-V2X
-  - [ ] V2V4Real (Only LiDAR released by Official)
 
 - Spconv Support
   - [x] 1.2.1
@@ -35,7 +35,7 @@
     - [x] [CoBEVT (CoRL2022)](https://arxiv.org/abs/2207.02202)
     - [x] [Where2comm (NeurIPS2022)](https://arxiv.org/abs/2209.12836)
     - [x] [CoAlign (ICRA2023)](https://arxiv.org/abs/2211.07214)
-    - [x] [BM2CP (CoRL2023)](https://arxiv.org/abs/2310.14702) (Coming soon for OPV2V dataset)
+    - [x] [BM2CP (CoRL2023)](https://arxiv.org/abs/2310.14702)
     - [x] [SCOPE (ICCV2023)](https://arxiv.org/abs/2307.13929)
     - [x] [How2comm (NeurIPS2023)](https://openreview.net/pdf?id=Dbaxm9ujq6)
 

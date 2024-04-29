@@ -158,8 +158,8 @@ class AttenComm(nn.Module):
             for i in range(self.num_levels):
                 x = feats[i] if with_resnet else backbone.blocks[i](x)
 
-                if x.shape != thres_map.shape:
-                    level_thres_map = F.interpolate(thres_map, size=x.shape[2:], mode='bilinear')
+                if rm.shape != thres_map.shape:
+                    level_thres_map = F.interpolate(thres_map, size=rm.shape[2:], mode='bilinear')
                 else:
                     level_thres_map = thres_map
 
@@ -167,6 +167,8 @@ class AttenComm(nn.Module):
                     batch_confidence_maps = self.regroup(rm, record_len)
                     batch_level_thres_map = self.regroup(level_thres_map, record_len)
                     _, communication_masks, communication_rates = communication(batch_confidence_maps, batch_level_thres_map, record_len, pairwise_t_matrix)
+                    if x.shape[-1] != communication_masks.shape[-1]:
+                        communication_masks = F.interpolate(communication_masks, size=(x.shape[-2], x.shape[-1]), mode='bilinear', align_corners=False)
                     x = x * communication_masks
 
                 # split x:[(L1, C, H, W), (L2, C, H, W), ...]
@@ -227,4 +229,3 @@ class AttenComm(nn.Module):
             x_fuse = torch.stack(x_fuse)
         
         return x_fuse, communication_rates, {}
-
