@@ -6,12 +6,11 @@ import numpy as np
 from torch.nn import functional as F
 from torch import batch_norm, einsum
 from einops import rearrange, repeat
-from icecream import ic
 
-from v2xvit.models.common_modules.torch_transformation_utils import warp_affine_simple
-from v2xvit.models.comm_modules.communication import Communication
-from v2xvit.models.sub_modules.how2comm_preprocess import How2commPreprocess
-from v2xvit.models.fuse_modules.stcformer import STCFormer
+from opencood.models.common_modules.torch_transformation_utils import warp_affine_simple
+from opencood.models.how2comm_modules.communication import Communication
+from opencood.models.how2comm_modules.how2comm_preprocess import How2commPreprocess
+from opencood.models.how2comm_modules.stcformer import STCFormer
 
 class How2comm(nn.Module):
     def __init__(self, args, args_pre):
@@ -72,7 +71,8 @@ class How2comm(nn.Module):
             offset_loss = torch.zeros(1).to(x.device)
         neighbor_psm_list = []
         if history:
-            his = history[0]
+            #his = history[0]
+            his = torch.concat(history, 0)
         else:
             his = x
 

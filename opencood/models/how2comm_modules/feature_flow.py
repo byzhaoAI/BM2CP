@@ -293,17 +293,14 @@ class FlowGenerator(nn.Module):
     def __init__(self, args):
         super(FlowGenerator, self).__init__()
         self.channel = 64
-        self.backbone = ResNetBEVBackbone(
-            args['base_bev_backbone'], self.channel)
+        self.backbone = ResNetBEVBackbone(args['base_bev_backbone'], self.channel)
         self.pre_encoder = ReduceInfTC(128)
         self.mse_loss = nn.MSELoss()
 
     def get_grid(self, flow):
         m, n = flow.shape[-2:]
-        shifts_x = torch.arange(
-            0, n, 1, dtype=torch.float32, device=flow.device)  
-        shifts_y = torch.arange(
-            0, m, 1, dtype=torch.float32, device=flow.device)  
+        shifts_x = torch.arange(0, n, 1, dtype=torch.float32, device=flow.device)  
+        shifts_y = torch.arange(0, m, 1, dtype=torch.float32, device=flow.device)  
         shifts_y, shifts_x = torch.meshgrid(shifts_y, shifts_x) 
 
         grid_dst = torch.stack((shifts_x, shifts_y)).unsqueeze(0)  
@@ -343,16 +340,11 @@ class FlowGenerator(nn.Module):
 
             offset, scale = self.pre_encoder(colla_fusion)
 
-            feat_estimate_target = self.flow_warp_feats(
-                feat_source, offset) 
+            feat_estimate_target = self.flow_warp_feats(feat_source, offset) 
             feat_estimate_target = feat_estimate_target * scale
-
-            final_list.append(
-                torch.cat([ego_feat, feat_estimate_target], dim=0)) 
-            similarity = torch.cosine_similarity(torch.flatten(feat_target, start_dim=1, end_dim=3), torch.flatten(
-                feat_estimate_target, start_dim=1, end_dim=3), dim=1)
-            label = torch.ones(1, requires_grad=False).to(
-                device=feat_target.device)
+            final_list.append(torch.cat([ego_feat, feat_estimate_target], dim=0)) 
+            similarity = torch.cosine_similarity(torch.flatten(feat_target, start_dim=1, end_dim=3), torch.flatten(feat_estimate_target, start_dim=1, end_dim=3), dim=1)
+            label = torch.ones(1, requires_grad=False).to(device=feat_target.device)
             loss = self.mse_loss(similarity, label)
             total_loss += loss
 

@@ -158,14 +158,18 @@ def calculate_ap(result_stat, iou):
 def eval_final_results(result_stat, save_path, range=""):
     dump_dict = {}
     file_name = 'eval.yaml' if range == "" else range+'_eval.yaml'
+    ap_30, mrec_30, mpre_30 = calculate_ap(result_stat, 0.30)
     ap_50, mrec_50, mpre_50 = calculate_ap(result_stat, 0.50)
     ap_70, mrec_70, mpre_70 = calculate_ap(result_stat, 0.70)
 
-    dump_dict.update({'ap_50': ap_50,
+    dump_dict.update({'ap_30': ap_30,
+                      'ap_50': ap_50,
                       'ap_70': ap_70,
+                      'mpre_30': mpre_30,
                       'mpre_50': mpre_50,
-                      'mrec_50': mrec_50,
                       'mpre_70': mpre_70,
+                      'mpre_30': mpre_30,
+                      'mrec_50': mrec_50,
                       'mrec_70': mrec_70,
                       })
     yaml_utils.save_yaml(dump_dict, os.path.join(save_path, file_name))
@@ -173,3 +177,4 @@ def eval_final_results(result_stat, save_path, range=""):
     print('The range is %s, '
           'The Average Precision at IOU 0.5 is %.3f, '
           'The Average Precision at IOU 0.7 is %.3f' % (range,  ap_50, ap_70))
+    return ap_30, ap_50, ap_70

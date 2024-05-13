@@ -74,7 +74,6 @@ model:
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
-    anchor_number: *achor_num
     max_cav: *max_cav
     compression: 32 # compression rate
     backbone_fix: false
@@ -115,12 +114,35 @@ model:
         kernel_size: [[3,3]]
 
     # add decoder
+    task:
+      decoder:
+        input_dim: 256
+        num_layer: 2
+        num_ch_dec: &decoder_block [ 64, 128 ]
+      
+      detection:
+        anchor_num: *achor_num
+      segmentation:
+        head_dim: 64
+        output_class: &seg_chn 2
 
 loss:
-  core_method: point_pillar_loss
+  core_method: point_pillar_combined_loss # point_pillar_loss
   args:
-    cls_weight: 1.0
-    reg: 2.0
+    point_pillar_loss:
+      cls_weight: 1.0
+      reg: 2.0
+    
+    point_pillar_seg_loss:
+      classes: *seg_chn
+      weights: 75.0
+      coe: 2.0
+
+#loss:
+#  core_method: point_pillar_loss
+#  args:
+#    cls_weight: 1.0
+#    reg: 2.0
 
 optimizer:
   core_method: Adam

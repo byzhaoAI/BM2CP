@@ -1,21 +1,22 @@
-name: opv2v_bm2cp
-root_dir: '/mnt/data/byzhao/OPV2V/train'
-validate_dir: '/mnt/data/byzhao/OPV2V/validate'
+name: opv2v_fecp_v2_async_1history
+root_dir: 'data/byzhao/OPV2V/train'
+validate_dir: 'data/byzhao/OPV2V/validate'
 
 yaml_parser: "load_cross_modal_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
-  epoches: &epoches 50
-  eval_freq: 1
+  batch_size: &batch_size 1
+  epoches: &epoches 30
+  eval_freq: 3
   save_freq: 1
   max_cav: &max_cav 5
+  frame: &frame 1
 
 device: &device cuda
 train: &train True
 
 wild_setting:
   seed: 20
-  async: False
+  async: True
   async_mode: 'sim'
   async_overhead: 100
   loc_err: False
@@ -26,9 +27,9 @@ wild_setting:
   backbone_delay: 10  # ms
 
 fusion:
-  core_method: 'IntermediateFusionDatasetOPV2V'  # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'LiDARCameraIntermediateFusionDatasetOPV2V_Multi'  # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args: 
-    proj_first: &proj_first false
+    proj_first: &proj_first true
     clip_pc: false
     # core_method: 'CameraIntermediateFusionDataset' configs
     grid_conf: &grid_conf
@@ -39,7 +40,7 @@ fusion:
       mode: 'LID'
     data_aug_conf: &data_aug_conf
       resize_lim: [0.7, 0.8]
-      final_dim: [600, 800]
+      final_dim: [300, 400]
       rot_lim: [0, 0] #[-3.6, 3.6]
       H: 600
       W: 800
@@ -90,11 +91,12 @@ postprocess:
 
 # Model related
 model:
-  core_method: point_pillar_bm2cp
+  core_method: point_pillar_fecp_v2
 
   args:
     device: *device
     train: *train
+    proj_first: *proj_first
     supervise_single: False
     backbone_fix: False
 
@@ -102,7 +104,7 @@ model:
     img_params:
       grid_conf: *grid_conf
       data_aug_conf: *data_aug_conf
-      img_downsample: 8
+      img_downsample: 4
       bev_dim: 64
       use_depth_gt: false
       depth_supervision: false #true
@@ -123,12 +125,17 @@ model:
     
     # params for modality fusion
     modality_fusion:
+      num_modality: 2
       bev_backbone:
-        layer_nums: &layer_nums [ 3, 5, 8 ]
+        encode_first: false
+        multi_scale: true
+
+        layer_nums: &layer_nums [3, 4, 5] #[ 3, 5, 8 ]
         layer_strides: [ 2, 2, 2 ]
         num_filters: &num_filters [ 64, 128, 256 ]
         upsample_strides: [ 1, 2, 4 ]
         num_upsample_filter: [ 128, 128, 128 ]
+        voxel_size: *voxel_size
       
       shrink_header:
         use: true
@@ -142,9 +149,10 @@ model:
 
     # params for collaborative fusion: where2comm
     collaborative_fusion:
+      frame: *frame
       fully: False
       voxel_size: *voxel_size
-      downsample_rate: 4
+      downsample_rate: 1
       in_channels: *out_channels
       
       communication:
@@ -172,16 +180,15 @@ loss:
     cls_weight: 1.0
     reg: 2.0
 
+
 optimizer:
   core_method: Adam
-  lr: 0.002 #2e-4
+  lr: 0.001
   args:
     eps: 1e-10
-    weight_decay: 1e-2
+    weight_decay: 1e-4
 
 lr_scheduler:
-  core_method: cosineannealwarm # step, multistep, exponential and cosineannealwarm support
-  epoches: *epoches
-  warmup_lr: 2e-5
-  warmup_epoches: 10
-  lr_min: 5e-6
+  core_method: multistep #step, multistep and Exponential support
+  gamma: 0.2
+  step_size: [10, 20, 30]

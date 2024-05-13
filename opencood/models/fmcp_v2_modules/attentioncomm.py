@@ -142,6 +142,8 @@ class ImportanceFusion(nn.Module):
         node_feature = self.att_forward(ego_node_feature, node_feature, node_feature, C)
         node_feature = rearrange(node_feature, '(h w) l c-> l c h w', h=H, w=W)
         return node_feature[0]
+        # return torch.sum(node_feature, dim=0, keepdim=False)
+        # return torch.max(node_feature, dim=0, keepdim=False)[0]
 
     def att_forward(self, query, key, value, C):
         score = torch.bmm(query, key.transpose(1, 2)) / np.sqrt(C)

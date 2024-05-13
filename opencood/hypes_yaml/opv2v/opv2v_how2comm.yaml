@@ -27,6 +27,7 @@ train_params:
 fusion:
   core_method: 'IntermediateFusionDatasetOPV2V_Multi' 
   args:
+    proj_first: &proj_first True # False
     cur_ego_pose_flag: true
 
 preprocess:

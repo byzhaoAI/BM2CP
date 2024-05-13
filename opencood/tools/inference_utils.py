@@ -87,10 +87,19 @@ def inference_early_fusion(batch_data, model, dataset):
         The tensor of gt bounding box.
     """
     output_dict = OrderedDict()
-    cav_content = batch_data['ego']
-    output_dict['ego'] = model(cav_content)
+    # cav_content = batch_data['ego']
+    # output_dict['ego'] = model(cav_content)
+    # pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data, output_dict)
     
-    pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data, output_dict)
+    if isinstance(batch_data, list):
+        cav_content = batch_data
+        output_dict['ego'] = model(cav_content)
+        pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data[0], output_dict)
+    else:
+        cav_content = batch_data['ego']
+        output_dict['ego'] = model(cav_content)    
+        pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data, output_dict)
+    
     return pred_box_tensor, pred_score, gt_box_tensor
 
 def inference_intermediate_fusion_withcomm(batch_data, model, dataset):

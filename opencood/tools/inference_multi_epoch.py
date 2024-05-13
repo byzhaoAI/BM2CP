@@ -62,13 +62,17 @@ def main():
         from opencood.utils import eval_utils_opv2v as eval_utils
         left_hand = True
 
+    elif 'v2v4real' in opt.model_dir:
+        from opencood.utils import eval_utils_v2v4real as eval_utils
+        left_hand = False
+
     elif 'dair' in opt.model_dir:
         from opencood.utils import eval_utils_where2comm as eval_utils
         hypes['validate_dir'] = hypes['test_dir']
         left_hand = False
 
     else:
-        print(f"The path should contain one of the following strings [opv2v|dair] .")
+        print(f"The path should contain one of the following strings [opv2v|dair|v2v4real] .")
         return 
     
     print(f"Left hand visualizing: {left_hand}")
@@ -93,7 +97,9 @@ def main():
         model.cuda()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    eval_epochs = [11,12,13,14,15,16,17,18,19,20]
+    eval_epochs = [11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28]
+    # eval_epochs = [10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28]
+    eval_epochs = [11,12,13,14,15,16,17,18,19,20,21]
 
     for eval_epoch in eval_epochs:
         print('Loading Model from checkpoint')

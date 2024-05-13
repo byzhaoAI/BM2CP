@@ -140,7 +140,10 @@ class BasePostprocessor(object):
         for cav_id, cav_content in data_dict.items():
             # used to project gt bounding box to ego space
             # object_bbx_center is clean.
-            transformation_matrix = cav_content['transformation_matrix_clean']
+            if self.dataset == 'opv2v' or self.dataset == 'v2v4real':
+                transformation_matrix = cav_content['gt_transformation_matrix']
+            else:
+                transformation_matrix = cav_content['transformation_matrix_clean']
 
             object_bbx_center = cav_content['object_bbx_center']
             object_bbx_mask = cav_content['object_bbx_mask']
@@ -184,8 +187,8 @@ class BasePostprocessor(object):
             gt_box3d_tensor = torch.from_numpy(gt_box3d).to(device=gt_box3d_list[0].device)
 
         # filter the gt_box to make sure all bbx are in the range
-        mask = \
-            box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor, self.params['gt_range'])
+        # mask = box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor, self.params['gt_range'])
+        mask = box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor, self.params['anchor_args']['cav_lidar_range'] if self.dataset == 'opv2v' or self.dataset == 'v2v4real' else self.params['gt_range'])
         gt_box3d_tensor = gt_box3d_tensor[mask, :, :]
 
         return gt_box3d_tensor
@@ -265,7 +268,7 @@ class BasePostprocessor(object):
         object_ids : list
             Length is number of bbx in current sample.
         """
-        from opencood.data_utils.datasets import COM_RANGE
+        # from opencood.data_utils.datasets import COM_RANGE
 
         tmp_object_dict = {}
         for cav_content in cav_contents:
@@ -273,7 +276,8 @@ class BasePostprocessor(object):
             cav_id = cav_content['cav_id']
 
         output_dict = {}
-        filter_range = self.params['anchor_args']['cav_lidar_range'] if self.train else COM_RANGE
+        # filter_range = self.params['anchor_args']['cav_lidar_range'] if self.train else COM_RANGE
+        filter_range = self.params['anchor_args']['cav_lidar_range']# if self.train else COM_RANGE
 
         from opencood.utils import box_utils_v2v4real as box_utils
         box_utils.project_world_objects(tmp_object_dict,

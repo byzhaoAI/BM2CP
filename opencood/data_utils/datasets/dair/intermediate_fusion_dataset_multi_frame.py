@@ -109,8 +109,10 @@ class IntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             idx += select_num
         
         select_dict = OrderedDict()
-        for j in range(idx,idx-select_num-1,-1):
-            base_data_dict = self.retrieve_base_data(j)
+        #for j in range(idx,idx-select_num-1,-1):
+        #    base_data_dict = self.retrieve_base_data(j)
+        for _ in range(self.frame + 1):
+            base_data_dict = self.retrieve_base_data(idx)
             base_data_dict = pose_utils.add_noise_data_dict(base_data_dict, self.params['noise_setting'])
             assert len(base_data_dict[0]['params']['lidar_pose']) > 0
             select_dict[j] = base_data_dict

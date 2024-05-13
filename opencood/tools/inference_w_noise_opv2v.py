@@ -79,10 +79,15 @@ def main():
     pos_mean_list = [0, 0, 0, 0]
     rot_mean_list = [0, 0, 0, 0]
     
-    pos_std_list = [0.2, 0.4, 0.6]
-    rot_std_list = [0.2, 0.4, 0.6]
-    pos_mean_list = [0, 0, 0]
-    rot_mean_list = [0, 0, 0]
+    pos_std_list = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    rot_std_list = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    pos_mean_list = [0, 0, 0, 0, 0, 0]
+    rot_mean_list = [0, 0, 0, 0, 0, 0]
+
+    #pos_std_list = [0.2, 0.4, 0.6]
+    #rot_std_list = [0.2, 0.4, 0.6]
+    #pos_mean_list = [0, 0, 0]
+    #rot_mean_list = [0, 0, 0]
 
     if opt.also_laplace:
         use_laplace_options = [False, True]

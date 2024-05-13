@@ -37,7 +37,7 @@ class LateFusionDataset(basedataset.BaseDataset):
         self.post_processor = build_postprocessor(params['postprocess'], dataset='opv2v', train=train)
 
     def __getitem__(self, idx):
-        base_data_dict = self.retrieve_base_data(idx)
+        base_data_dict, _, _ = self.retrieve_base_data(idx)
         if self.train:
             reformat_data_dict = self.get_item_train(base_data_dict)
         else:

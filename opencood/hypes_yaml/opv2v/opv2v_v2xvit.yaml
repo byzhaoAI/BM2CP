@@ -25,6 +25,7 @@ train_params:
 fusion:
   core_method: 'IntermediateFusionDatasetOPV2V' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args:
+    proj_first: &proj_first True # False
     cur_ego_pose_flag: False
       # when the cur_ego_pose_flag is set to True, there is no time gap
       # between  the time when the LiDAR data is captured by connected
@@ -75,7 +76,7 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_transformer
+  core_method: point_pillar_v2xvit
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar

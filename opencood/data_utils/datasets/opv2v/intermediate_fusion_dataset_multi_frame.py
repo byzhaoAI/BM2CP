@@ -296,7 +296,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
                     merged_feature_dict[feature_name].append(feature)
 
         return merged_feature_dict
-    
+
     def collate_batch_train(self, batch):
         # Intermediate fusion is different the other two
         output_dict_list = []
@@ -391,7 +391,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             output_dict_list.append(output_dict)
 
         return output_dict_list
-    
+
     def collate_batch_test(self, batch):
         assert len(batch) <= 1, "Batch size 1 is required during testing!"
         output_dict_list = self.collate_batch_train(batch)

@@ -7,9 +7,11 @@ from opencood.data_utils.datasets.opv2v.early_fusion_dataset import EarlyFusionD
 from opencood.data_utils.datasets.opv2v.intermediate_fusion_dataset import IntermediateFusionDataset as IntermediateFusionDatasetOPV2V
 from opencood.data_utils.datasets.opv2v.intermediate_fusion_dataset_v2 import IntermediateFusionDatasetV2 as IntermediateFusionDatasetOPV2V_V2
 from opencood.data_utils.datasets.opv2v.intermediate_fusion_dataset_multi_frame import IntermediateFusionDataset as IntermediateFusionDatasetOPV2V_MULTI
+from opencood.data_utils.datasets.opv2v.intermediate_fusion_dataset_multi_frame_how2comm import IntermediateFusionDataset as IntermediateFusionDatasetOPV2V_MULTI_HOW2COMM
 from opencood.data_utils.datasets.opv2v.late_fusion_dataset import LateFusionDataset as LateFusionDatasetOPV2V
 from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V
 from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset_v2 import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V_V2
+from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset_multi_frame import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V_MULTI
 
 from opencood.data_utils.datasets.dair.early_fusion_dataset import EarlyFusionDatasetDAIR
 from opencood.data_utils.datasets.dair.intermediate_fusion_dataset import IntermediateFusionDatasetDAIR
@@ -17,6 +19,8 @@ from opencood.data_utils.datasets.dair.intermediate_fusion_dataset_multi_frame i
 from opencood.data_utils.datasets.dair.late_fusion_dataset import LateFusionDatasetDAIR
 from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset import LiDARCameraIntermediateFusionDatasetDAIR
 from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset_v2 import LiDARCameraIntermediateFusionDatasetDAIR as LiDARCameraIntermediateFusionDatasetDAIR_V2
+from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset_multi_frame import LiDARCameraIntermediateFusionDatasetDAIR as LiDARCameraIntermediateFusionDatasetDAIR_MULTI
+from opencood.data_utils.datasets.dair.lidar_camera_intermediate_fusion_dataset_multi_frame_same import LiDARCameraIntermediateFusionDatasetDAIR as LiDARCameraIntermediateFusionDatasetDAIR_MULTI_S
 
 from opencood.data_utils.datasets.v2v4real.early_fusion_dataset import EarlyFusionDataset as EarlyFusionDatasetV2V4Real
 from opencood.data_utils.datasets.v2v4real.late_fusion_dataset import LateFusionDataset as LateFusionDatasetV2V4Real
@@ -27,9 +31,11 @@ __all__ = {
     'IntermediateFusionDatasetOPV2V': IntermediateFusionDatasetOPV2V,
     'IntermediateFusionDatasetOPV2V_V2': IntermediateFusionDatasetOPV2V_V2,
     'IntermediateFusionDatasetOPV2V_Multi': IntermediateFusionDatasetOPV2V_MULTI,
+    'IntermediateFusionDatasetOPV2V_Multi_How2comm': IntermediateFusionDatasetOPV2V_MULTI_HOW2COMM,
     'LateFusionDatasetOPV2V': LateFusionDatasetOPV2V,
     'LiDARCameraIntermediateFusionDatasetOPV2V': LiDARCameraIntermediateFusionDatasetOPV2V,
     'LiDARCameraIntermediateFusionDatasetOPV2V_V2': LiDARCameraIntermediateFusionDatasetOPV2V_V2,
+    'LiDARCameraIntermediateFusionDatasetOPV2V_Multi': LiDARCameraIntermediateFusionDatasetOPV2V_MULTI,
 
     'EarlyFusionDatasetDAIR': EarlyFusionDatasetDAIR,
     'IntermediateFusionDatasetDAIR': IntermediateFusionDatasetDAIR,
@@ -37,6 +43,8 @@ __all__ = {
     'LateFusionDatasetDAIR': LateFusionDatasetDAIR,
     'LiDARCameraIntermediateFusionDatasetDAIR': LiDARCameraIntermediateFusionDatasetDAIR,
     'LiDARCameraIntermediateFusionDatasetDAIRV2': LiDARCameraIntermediateFusionDatasetDAIR_V2,
+    'LiDARCameraIntermediateFusionDatasetDAIR_Multi': LiDARCameraIntermediateFusionDatasetDAIR_MULTI,
+    'LiDARCameraIntermediateFusionDatasetDAIR_Multi_S': LiDARCameraIntermediateFusionDatasetDAIR_MULTI_S,
 
     'EarlyFusionDatasetV2V4Real': EarlyFusionDatasetV2V4Real,
     'IntermediateFusionDatasetV2V4Real': IntermediateFusionDatasetV2V4Real,

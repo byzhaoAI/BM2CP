@@ -1,8 +1,6 @@
-name: point_pillar_early_fusion
-root_dir: '/data/v2vreal/train'
-validate_dir: '/data/v2vreal/validate'
-
-
+name: v2v4real_early_fusion
+root_dir: 'data/byzhao/V2V4Real/train'
+validate_dir: 'data/byzhao/V2V4Real/test'
 
 yaml_parser: "load_point_pillar_params"
 
@@ -21,7 +19,7 @@ train_params:
   save_freq: 1
 
 fusion:
-  core_method: 'EarlyFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'EarlyFusionDatasetV2V4Real' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args: []
 
 # preprocess-related
@@ -35,6 +33,7 @@ preprocess:
     max_voxel_test: 70000
   # lidar range for each individual cav.
   cav_lidar_range: &cav_lidar [-140.8, -40, -5, 140.8, 40, 3]
+  bev_map_resolution: 0.4
 
 data_augment:
   - NAME: random_world_flip
@@ -56,7 +55,7 @@ postprocess:
     h: 1.56
     r: [0, 90]
     num: &achor_num 2
-    feature_stride: 4
+    feature_stride: 2
   target_args:
     pos_threshold: 0.6
     neg_threshold: 0.45
@@ -87,22 +86,41 @@ model:
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
 
-    shrink_header:
-      kernal_size: [ 3 ]
-      stride: [ 2 ]
-      padding: [ 1 ]
-      dim: [ 256 ]
-      input_dim: 384 # 128 * 3
+    #shrink_header:
+    #  kernal_size: [ 3 ]
+    #  stride: [ 2 ]
+    #  padding: [ 1 ]
+    #  dim: [ 256 ]
+    #  input_dim: 384 # 128 * 3
 
     cls_head_dim: 256
 
     anchor_num: *achor_num
 
+    # add decoder
+    task:
+      decoder:
+        input_dim: 384
+        num_layer: 1
+        num_ch_dec: &decoder_block [ 64 ]
+      
+      detection:
+        anchor_num: *achor_num
+      segmentation:
+        head_dim: 64
+        output_class: &seg_chn 2
+
 loss:
-  core_method: point_pillar_loss
+  core_method: point_pillar_combined_loss # point_pillar_loss
   args:
-    cls_weight: 1.0
-    reg: 2.0
+    point_pillar_loss:
+      cls_weight: 1.0
+      reg: 2.0
+    
+    point_pillar_seg_loss:
+      classes: *seg_chn
+      weights: 75.0
+      coe: 2.0
 
 optimizer:
   core_method: Adam

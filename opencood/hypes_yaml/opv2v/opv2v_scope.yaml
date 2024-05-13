@@ -1,7 +1,7 @@
 name: opv2v_scope
 
-root_dir: '/data/opv2v/train'
-validate_dir: '/data/opv2v/validate'
+root_dir: '/mnt/data/byzhao/OPV2V/train'
+validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
 wild_setting:
   async: False
@@ -19,7 +19,7 @@ yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 2
   epoches: 30
-  eval_freq: 1
+  eval_freq: 2
   save_freq: 1
   max_cav: &max_cav 5
   frame: &frame 1
@@ -28,6 +28,7 @@ train_params:
 fusion:
   core_method: 'IntermediateFusionDatasetOPV2V_Multi' 
   args:
+    proj_first: &proj_first True # False
     cur_ego_pose_flag: true
 preprocess:
   core_method: 'SpVoxelPreprocessor'

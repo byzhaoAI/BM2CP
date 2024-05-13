@@ -94,6 +94,10 @@ def main():
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
+    print(model)
+    total = sum([param.nelement() for param in model.parameters()])
+    print("Number of parameter: %d" % (total))
+    
     # we assume gpu is necessary
     if torch.cuda.is_available():
         model.cuda()

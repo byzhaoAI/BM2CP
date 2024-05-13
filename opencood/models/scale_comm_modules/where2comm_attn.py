@@ -217,7 +217,10 @@ class Where2comm(nn.Module):
                                                 with_scm=args['agg_operator']['with_scm'])
                 self.fuse_modules.append(fuse_network)
                 #self.pool_modules.append(nn.MaxPool2d(2))
-                self.pool_modules.append(nn.MaxPool2d(4))
+                #self.pool_modules.append(nn.MaxPool2d(4))
+                #self.pool_modules.append(nn.Conv2d(num_filters[idx], num_filters[idx], 3, stride=2, padding=1))
+                #self.pool_modules.append(nn.Conv2d(num_filters[idx], num_filters[idx], 5, stride=2, padding=2))
+                self.pool_modules.append(nn.Conv2d(num_filters[idx], num_filters[idx], 7, stride=2, padding=3))
 
         else:
             if self.agg_mode == 'ATTEN':

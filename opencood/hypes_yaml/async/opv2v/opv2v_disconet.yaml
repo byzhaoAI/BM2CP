@@ -1,17 +1,30 @@
-name: opv2v_intermediate_fusion
+name: opv2v_disconet_async
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
+wild_setting:
+  async: true
+  async_overhead: 100
+  seed: 20
+  loc_err: false
+  xyz_std: 0.2
+  ryp_std: 0.2
+  data_size: 1.06 # Mb!!
+  transmission_speed: 27 # Mbps!!
+  backbone_delay: 10 # ms
+
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
-  epoches: 15
+  batch_size: &batch_size 4
+  epoches: 60
   eval_freq: 1
   save_freq: 1
+  max_cav: &max_cav 5
 
 fusion:
   core_method: 'IntermediateFusionDatasetOPV2V' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
-  args: []
+  args:
+    proj_first: false
 
 # preprocess-related
 preprocess:
@@ -44,7 +57,7 @@ postprocess:
     w: 1.6
     h: 1.56
     r: [0, 90]
-    feature_stride: 2
+    feature_stride: 4
     num: &achor_num 2
   target_args:
     pos_threshold: 0.6
@@ -56,11 +69,14 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_intermediate
+  core_method: point_pillar_disconet
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *achor_num
+    max_cav: *max_cav
+    compression: 0 # compression rate
+    backbone_fix: false
 
     pillar_vfe:
       use_norm: true
@@ -76,9 +92,28 @@ model:
       num_filters: [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
-      compression: 0
+    shrink_header:
+      kernal_size: [ 3 ]
+      stride: [ 2 ]
+      padding: [ 1 ]
+      dim: [ 256 ]
+      input_dim: 384 # 128 * 3
 
-    anchor_num: *achor_num
+    v2vfusion:
+      voxel_size: *voxel_size
+      downsample_rate: 4
+      num_iteration: 2
+      in_channels: 256
+      gru_flag: true
+      agg_operator: "avg" # max or avg
+      conv_gru:
+        H: 50
+        W: 176
+        num_layers: 1
+        kernel_size: [[3,3]]
+
+    anchor_num: 2
+      # add decoder later
 
 loss:
   core_method: point_pillar_loss
@@ -88,7 +123,7 @@ loss:
 
 optimizer:
   core_method: Adam
-  lr: 0.002
+  lr: 0.001
   args:
     eps: 1e-10
     weight_decay: 1e-4
@@ -96,5 +131,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10, 15]
+  step_size: [10, 50, 80]
 

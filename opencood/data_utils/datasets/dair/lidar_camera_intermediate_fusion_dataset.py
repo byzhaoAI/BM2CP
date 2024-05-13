@@ -78,7 +78,12 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         self.params = params
         self.visualize = visualize
         self.train = train
-        self.max_cav = 2
+
+        if 'train_params' not in params or 'max_cav' not in params['train_params']:
+            self.max_cav = 2
+        else:
+            self.max_cav = params['train_params']['max_cav']
+        # self.max_cav = 2
         
         # configs in yaml file about project first, knowledge distillation
         #       if project first, cav's lidar will first be projected to the ego's coordinate frame. otherwise, the feature will be projected instead.
@@ -165,7 +170,11 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
 
 
         # loop over all CAVs to process information
-        for cav_id in cav_id_list:
+        # for cav_id in cav_id_list:
+        for (j, cav_id) in enumerate(cav_id_list):
+            if j > self.max_cav - 1:
+                print('too many cavs')
+                break
             selected_cav_processed = self.get_item_single_car(base_data_dict[cav_id], base_data_dict[0]['params']['lidar_pose'], base_data_dict[0]['params']['lidar_pose_clean'])
             
             # selected_cav_processed['object_bbx_center']: box for cooperative
@@ -500,7 +509,11 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 t_list.append(transformation_utils.x_to_world(lidar_pose))  # Twx
 
             for i in range(len(t_list)):
+                if i > max_cav - 1:
+                    continue
                 for j in range(len(t_list)):
+                    if j > max_cav - 1:
+                        continue
                     # identity matrix to self
                     if i != j:
                         # i->j: TiPi=TjPj, Tj^(-1)TiPi = Pj

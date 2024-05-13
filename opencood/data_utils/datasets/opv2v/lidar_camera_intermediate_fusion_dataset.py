@@ -744,6 +744,9 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
 
             if self.visualize:
                 origin_lidar.append(ego_dict['origin_lidar'])
+        
+        lidar_poses = torch.from_numpy(np.concatenate(lidar_poses, axis=0))
+
         # convert to numpy, (B, max_num, 7)
         object_bbx_center = torch.from_numpy(np.array(object_bbx_center))
         object_bbx_mask = torch.from_numpy(np.array(object_bbx_mask))

@@ -127,7 +127,7 @@ def main():
             model.zero_grad()
             optimizer.zero_grad()
 
-            if 'scope' in hypes['name'] or 'how2comm' in hypes['name']:
+            if 'scope' in hypes['name'] or 'how2comm' in hypes['name'] or 'fecp' in hypes['name']:
                 _batch_data = batch_data[0]
                 batch_data = train_utils.to_device(batch_data, device)
                 _batch_data = train_utils.to_device(_batch_data, device)
@@ -198,7 +198,7 @@ def main():
                     optimizer.zero_grad()
                     model.eval()
 
-                    if 'scope' in hypes['name'] or 'how2comm' in hypes['name']:
+                    if 'scope' in hypes['name'] or 'how2comm' in hypes['name'] or 'fecp' in hypes['name']:
                         _batch_data = batch_data[0]
                         batch_data = train_utils.to_device(batch_data, device)
                         _batch_data = train_utils.to_device(_batch_data, device)

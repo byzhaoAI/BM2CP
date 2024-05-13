@@ -8,9 +8,11 @@ from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone
 from opencood.models.common_modules.base_bev_backbone_resnet import ResNetBEVBackbone
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
-
+from opencood.models.common_modules.naive_decoder import NaiveDecoder
 from opencood.models.common_modules.torch_transformation_utils import warp_affine_simple
+
 from opencood.models.how2comm_modules.how2comm_deformable import How2comm
+
 
 def transform_feature(feature_list, delay):
     return feature_list[delay]
@@ -50,10 +52,36 @@ class PointPillarHow2comm(nn.Module):
         self.downsample_rate = args['fusion_args']['downsample_rate']
         self.multi_scale = args['fusion_args']['multi_scale']
 
-        self.cls_head = nn.Conv2d(128 * 2, args['anchor_number'],
-                                  kernel_size=1)
-        self.reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'],
-                                  kernel_size=1)
+        self.detection = False
+        if 'detection' in args['task']:
+            self.detection = True
+            # detection task
+            self.cls_head = nn.Conv2d(128 * 2, args['task']['detection']['anchor_num'], kernel_size=1)
+            self.reg_head = nn.Conv2d(128 * 2, 7 * args['task']['detection']['anchor_num'], kernel_size=1)
+            if 'dir_args' in args['task'].keys():
+                self.use_dir = True
+                self.dir_head = nn.Conv2d(128 * 2, args['task']['detection']['dir_args']['num_bins'] * args['task']['detection']['dir_args']['anchor_num'], kernel_size=1) # BIN_NUM = 2
+            else:
+                self.use_dir = False
+        
+        self.segmentation, self.lane, self.trajectory = False, False, False
+        if 'segmentation' in args['task']:
+            self.segmentation = True
+            self.seg_head = nn.Conv2d(args['task']['segmentation']['head_dim'], args['task']['segmentation']['output_class'], kernel_size=3, padding=1)
+            self.seg_rot = args['task']['segmentation']['rotation'] if 'rotation' in args['task']['segmentation'] else False
+            self.seg_clip = args['task']['segmentation']['clip_size'] if 'clip_size' in args['task']['segmentation'] else False
+
+        if 'lane' in args['task']:
+            self.lane = True
+            self.lane_head = nn.Conv2d(args['task']['lane']['head_dim'], args['task']['lane']['output_class'], kernel_size=3, padding=1)
+            self.lane_rot = args['task']['lane']['rotation'] if 'rotation' in args['task']['lane'] else False
+            self.lane_clip = args['task']['lane']['clip_size'] if 'clip_size' in args['task']['lane'] else False
+        
+        self.decoder = None
+        if self.segmentation or self.lane or self.trajectory:
+            assert 'decoder' in args['task']
+            self.decoder = NaiveDecoder(args['task']['decoder'])
+
         if args['backbone_fix']:
             self.backbone_fix()
 
@@ -77,10 +105,25 @@ class PointPillarHow2comm(nn.Module):
             for p in self.shrink_conv.parameters():
                 p.requires_grad = False
 
-        for p in self.cls_head.parameters():
-            p.requires_grad = False
-        for p in self.reg_head.parameters():
-            p.requires_grad = False
+        if self.detection:
+            for p in self.cls_head.parameters():
+                p.requires_grad = False
+            for p in self.reg_head.parameters():
+                p.requires_grad = False
+        
+        if self.segmentation:
+            for p in self.seg_head.parameters():
+                p.requires_grad = False
+        if self.lane:
+            for p in self.lane_head.parameters():
+                p.requires_grad = False
+        if self.trajectory:        
+            for p in self.traj_head.parameters():
+                p.requires_grad = False
+
+        if self.decoder is not None:
+            for p in self.decoder.parameters():
+                p.requires_grad = False
 
     def regroup(self, x, record_len):
         cum_sum_len = torch.cumsum(record_len, dim=0)
@@ -131,15 +174,11 @@ class PointPillarHow2comm(nn.Module):
             spatial_features = batch_dict['spatial_features']
             feature_list.append(spatial_features)
             feature_2d_list.append(spatial_features_2d)
-            matrix_list.append(pairwise_t_matrix)  
-            regroup_feature_list.append(self.regroup(
-                spatial_features_2d, record_len))  
-            regroup_feature_list_large.append(
-                self.regroup(spatial_features, record_len))
+            matrix_list.append(pairwise_t_matrix)
+            #regroup_feature_list.append(self.regroup(spatial_features_2d, record_len))  
+            regroup_feature_list_large.append(self.regroup(spatial_features, record_len))
 
-        pairwise_t_matrix = matrix_list[0].clone().detach()  
-        
-
+        pairwise_t_matrix = matrix_list[0].clone().detach()
         history_feature = transform_feature(regroup_feature_list_large, self.delay)
         spatial_features = feature_list[0]
         spatial_features_2d = feature_2d_list[0]
@@ -154,16 +193,50 @@ class PointPillarHow2comm(nn.Module):
         if self.shrink_flag:
             fused_feature = self.shrink_conv(fused_feature)
 
-        psm = self.cls_head(fused_feature)
-        rm = self.reg_head(fused_feature)
-        
-        output_dict = {'psm': psm,
-                        'rm': rm
-                    }
-
+        output_dict = {}
         output_dict.update(result_dict)
         output_dict.update({'comm_rate': communication_rates,
                             "offset_loss": offset_loss,
                             'commu_loss': commu_loss
                             })
+
+        if self.detection:
+            psm = self.cls_head(fused_feature)
+            rm = self.reg_head(fused_feature)
+
+            output_dict.update({
+                'psm': psm,
+                'rm': rm
+            })
+        
+        if self.decoder is not None:
+            x = self.decoder(fused_feature)
+        
+        if self.segmentation:
+            # torch.Size([4, 64, 192, 704])
+            seg_map = self.seg_head(x)
+            if self.seg_rot:
+                seg_map = torch.rot90(seg_map, k=1, dims=[-2, -1])
+            if self.seg_clip:
+                _, _, h, w = seg_map.shape
+                h_down, h_up = (h-self.seg_clip[0])//2, (h+self.seg_clip[0])//2
+                w_down, w_up = (w-self.seg_clip[1])//2, (w+self.seg_clip[1])//2
+                seg_map = seg_map[:,:,h_down:h_up,w_down:w_up]
+            output_dict.update({'seg': seg_map})
+        
+        if self.lane:
+            lane_map = self.lane_head(x)
+            if self.lane_rot:
+                lane_map = torch.rot90(lane_map, k=1, dims=[-2, -1])
+            if self.lane_clip:
+                _, _, h, w = lane_map.shape
+                h_down, h_up = (h-self.lane_clip[0])//2, (h+self.lane_clip[0])//2
+                w_down, w_up = (w-self.lane_clip[1])//2, (w+self.lane_clip[1])//2
+                lane_map = lane_map[:,:,h_down:h_up,w_down:w_up]
+            output_dict.update({'lane': lane_map})
+        
+        if self.trajectory:
+            pass
+            # output_dict.update({'seg_lane': self.lane_head(x)})
+
         return output_dict

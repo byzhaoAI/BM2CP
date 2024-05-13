@@ -41,7 +41,7 @@ class MultiModalFusion(nn.Module):
         fused_feat = self.adapt_conv(fused_feat)
         
         B, C, H, W = fused_feat.shape
-        fused_feat = rearrange(fused_feat, 'b c h w -> (h w) b c')        
+        fused_feat = rearrange(fused_feat, 'b c h w -> (h w) b c')
         retrived_feat = 0
         for feat in feats:
             score = torch.bmm(rearrange(feat, 'b c h w -> (h w) b c'), fused_feat.transpose(1, 2)) / np.sqrt(C)
@@ -261,8 +261,8 @@ class PointPillarFMCPV2(nn.Module):
                 new_x.append(torch.zeros(_x.shape).to(_x.device))
             
         new_x, new_y = torch.cat(new_x), torch.cat(new_y)
-        return new_x, new_y, adapter
         """
+        #return new_x, new_y, adapter
         return x, y, adapter
 
 

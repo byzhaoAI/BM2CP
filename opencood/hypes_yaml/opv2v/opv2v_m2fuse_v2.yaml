@@ -28,7 +28,7 @@ wild_setting:
 fusion:
   core_method: 'LiDARCameraIntermediateFusionDatasetOPV2V'  # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args: 
-    proj_first: &proj_first false
+    proj_first: &proj_first true
     clip_pc: false
     # core_method: 'CameraIntermediateFusionDataset' configs
     grid_conf: &grid_conf

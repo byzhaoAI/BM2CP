@@ -93,6 +93,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         infra = []
         spatial_correction_matrix = []
         bev_map = None
+        
+        lidar_pose = []
 
         if self.visualize:
             projected_lidar_stack = []
@@ -126,6 +128,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             time_delay.append(float(selected_cav_base['time_delay']))
             spatial_correction_matrix.append(selected_cav_base['params']['spatial_correction_matrix'])
             infra.append(1 if int(cav_id) < 0 else 0)
+
+            lidar_pose.append(selected_cav_base['params']['lidar_pose'])
 
             if self.visualize:
                 projected_lidar = selected_cav_processed['projected_lidar']
@@ -167,6 +171,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         spatial_correction_matrix = np.concatenate([spatial_correction_matrix, padding_eye], axis=0)
 
         processed_data_dict['ego'].update({
+            'lidar_pose': lidar_pose,
             'object_bbx_center': object_bbx_center,
             'object_bbx_mask': mask,
             'object_ids': [object_id_stack[i] for i in unique_indices],
@@ -287,6 +292,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # Intermediate fusion is different the other two
         output_dict = {'ego': {}}
 
+        lidar_poses = []
+
         object_bbx_center = []
         object_bbx_mask = []
         object_ids = []
@@ -316,6 +323,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             object_bbx_mask.append(ego_dict['object_bbx_mask'])
             object_ids.append(ego_dict['object_ids'])
 
+            lidar_poses.append(ego_dict['lidar_pose'])
+
             processed_lidar_list.append(ego_dict['processed_lidar'])
             record_len.append(ego_dict['cav_num'])
             label_dict_list.append(ego_dict['label_dict'])
@@ -328,6 +337,9 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
 
             if self.visualize:
                 origin_lidar.append(ego_dict['origin_lidar'])
+
+        lidar_poses = torch.from_numpy(np.concatenate(lidar_poses, axis=0))
+
         # convert to numpy, (B, max_num, 7)
         object_bbx_center = torch.from_numpy(np.array(object_bbx_center))
         object_bbx_mask = torch.from_numpy(np.array(object_bbx_mask))
@@ -360,7 +372,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             'object_ids': object_ids[0],
             'prior_encoding': prior_encoding,
             'spatial_correction_matrix': spatial_correction_matrix_list,
-            'pairwise_t_matrix': pairwise_t_matrix
+            'pairwise_t_matrix': pairwise_t_matrix,
+            'lidar_pose': lidar_poses,
         })
 
         if self.visualize:

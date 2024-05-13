@@ -4,7 +4,7 @@ validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 4
+  batch_size: &batch_size 1
   epoches: 60
   eval_freq: 1
   save_freq: 1
@@ -13,7 +13,7 @@ train_params:
 fusion:
   core_method: 'IntermediateFusionDatasetOPV2V' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args:
-    proj_first: false
+    proj_first: true
 
 # preprocess-related
 preprocess:
