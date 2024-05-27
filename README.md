@@ -99,6 +99,21 @@ Arguments Explanation:
 
 The evaluation results  will be dumped in the model directory.
 
+## Citation
+If you are using our project for your research, please cite the following paper:
+
+```
+
+@InProceedings{zhao2023bm,
+  title = {BM2CP: Efficient Collaborative Perception with LiDAR-Camera Modalities},
+  author = {Zhao, Binyu and ZHANG, Wei and Zou, Zhaonian},
+  booktitle = {Proceedings of The 7th Conference on Robot Learning},
+  pages = {1022--1035},
+  year = {2023},
+  series = {Proceedings of Machine Learning Research},
+}
+```
+
 ## Acknowledgements
 Thank for the excellent cooperative perception codebases [OpenCOOD](https://github.com/DerrickXuNu/OpenCOOD), [CoPerception](https://github.com/coperception/coperception) and [Where2comm](https://github.com/MediaBrain-SJTU/Where2comm).
 
