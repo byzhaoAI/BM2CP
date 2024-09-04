@@ -12,6 +12,8 @@ from opencood.data_utils.datasets.opv2v.late_fusion_dataset import LateFusionDat
 from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V
 from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset_v2 import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V_V2
 from opencood.data_utils.datasets.opv2v.lidar_camera_intermediate_fusion_dataset_multi_frame import LiDARCameraIntermediateFusionDataset as LiDARCameraIntermediateFusionDatasetOPV2V_MULTI
+from opencood.data_utils.datasets.opv2v.multi_modal_intermediate_fusion_dataset import MultiModalIntermediateFusionDataset as MultiModalIntermediateFusionDatasetOPV2V
+from opencood.data_utils.datasets.opv2v.multi_modal_intermediate_fusion_dataset_depth import MultiModalIntermediateFusionDataset as MultiModalIntermediateFusionDatasetDepthOPV2V
 
 from opencood.data_utils.datasets.dair.early_fusion_dataset import EarlyFusionDatasetDAIR
 from opencood.data_utils.datasets.dair.intermediate_fusion_dataset import IntermediateFusionDatasetDAIR
@@ -36,6 +38,8 @@ __all__ = {
     'LiDARCameraIntermediateFusionDatasetOPV2V': LiDARCameraIntermediateFusionDatasetOPV2V,
     'LiDARCameraIntermediateFusionDatasetOPV2V_V2': LiDARCameraIntermediateFusionDatasetOPV2V_V2,
     'LiDARCameraIntermediateFusionDatasetOPV2V_Multi': LiDARCameraIntermediateFusionDatasetOPV2V_MULTI,
+    'MultiModalIntermediateFusionDatasetOPV2V': MultiModalIntermediateFusionDatasetOPV2V,
+    'MultiModalIntermediateFusionDatasetDepthOPV2V': MultiModalIntermediateFusionDatasetDepthOPV2V,
 
     'EarlyFusionDatasetDAIR': EarlyFusionDatasetDAIR,
     'IntermediateFusionDatasetDAIR': IntermediateFusionDatasetDAIR,
