@@ -18,6 +18,10 @@ class PointPillarLossCoAlign(nn.Module):
 
         self.cls = args['cls']
         self.reg = args['reg']
+        if 'rec' in args:
+            self.rec = args['rec']
+        else:
+            self.rec = None
 
         if 'dir' in args:
             self.dir = args['dir']
@@ -115,12 +119,24 @@ class PointPillarLossCoAlign(nn.Module):
 
         total_loss += reg_loss + cls_loss
 
+        if suffix:
+            self.loss_dict.update({'total_loss{}'.format(suffix): total_loss.item(),
+                                'reg_loss{}'.format(suffix): reg_loss.item(),
+                                'cls_loss{}'.format(suffix): cls_loss.item()})
+            return total_loss
+
         self.loss_dict.update({'total_loss': total_loss.item(),
                                'reg_loss': reg_loss.item(),
                                'cls_loss': cls_loss.item()})
 
         return total_loss
 
+    def rec_forward(self, output_dict, total_loss):
+        if 'rec_loss' in output_dict:
+            rec_wg = 1 if self.rec is None else self.rec['weight']
+            total_loss += output_dict['rec_loss'] * rec_wg
+            self.loss_dict.update({'rec_loss': output_dict['rec_loss'].item()})
+        return total_loss
 
     @staticmethod
     def add_sin_difference(boxes1, boxes2, dim=6):
@@ -186,12 +202,12 @@ class PointPillarLossCoAlign(nn.Module):
         cls_loss = self.loss_dict.get('cls_loss', 0)
         dir_loss = self.loss_dict.get('dir_loss', 0)
         iou_loss = self.loss_dict.get('iou_loss', 0)
-
+        rec_loss = self.loss_dict.get('rec_loss', 0)
 
         print("[epoch %d][%d/%d]%s || Loss: %.4f || Conf Loss: %.4f"
-              " || Loc Loss: %.4f || Dir Loss: %.4f || IoU Loss: %.4f" % (
+              " || Loc Loss: %.4f || Dir Loss: %.4f || IoU Loss: %.4f || Rec Loss: %.4f" % (
                   epoch, batch_id + 1, batch_len, suffix,
-                  total_loss, cls_loss, reg_loss, dir_loss, iou_loss))
+                  total_loss, cls_loss, reg_loss, dir_loss, iou_loss, rec_loss))
 
         if not writer is None:
             writer.add_scalar('Regression_loss'+suffix, reg_loss,
