@@ -309,14 +309,14 @@ def setup_optimizer(hypes, model):
     if 'args' in method_dict:
         return optimizer_method(
             # model.parameters(),
-            filter(lambda p: p.requires_grad, model.parameters())
+            filter(lambda p: p.requires_grad, model.parameters()),
             lr=method_dict['lr'],
             **method_dict['args']
         )
     else:
         return optimizer_method(
             # model.parameters(),
-            filter(lambda p: p.requires_grad, model.parameters())
+            filter(lambda p: p.requires_grad, model.parameters()),
             lr=method_dict['lr']
         )
 
