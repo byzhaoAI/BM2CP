@@ -154,7 +154,7 @@ model:
       
       compression: 0  # Compression rate
 
-    params for collaborative fusion: where2comm
+    # params for collaborative fusion: where2comm
     collaborative_fusion:
       # fully: False
       # voxel_size: *voxel_size
