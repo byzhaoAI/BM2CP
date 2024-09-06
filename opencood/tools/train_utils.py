@@ -307,12 +307,18 @@ def setup_optimizer(hypes, model):
     if not optimizer_method:
         raise ValueError('{} is not supported'.format(method_dict['name']))
     if 'args' in method_dict:
-        return optimizer_method(model.parameters(),
-                                lr=method_dict['lr'],
-                                **method_dict['args'])
+        return optimizer_method(
+            # model.parameters(),
+            filter(lambda p: p.requires_grad, model.parameters())
+            lr=method_dict['lr'],
+            **method_dict['args']
+        )
     else:
-        return optimizer_method(model.parameters(),
-                                lr=method_dict['lr'])
+        return optimizer_method(
+            # model.parameters(),
+            filter(lambda p: p.requires_grad, model.parameters())
+            lr=method_dict['lr']
+        )
 
 
 def setup_lr_schedular(hypes, optimizer, init_epoch=None, n_iter_per_epoch=None):
