@@ -459,6 +459,11 @@ class PointPillarVDResX(nn.Module):
             'modality_num': m_len,
         }
 
+        output_dict.update({
+            'psm': cls_preds[:,-1],
+            'rm': reg_preds[:,-1],
+        })
+
         # for x_idx in range(m_len):
         #     output_dict.update({
         #         'cls_preds_{}'.format(x_idx): cls_preds[:,x_idx],
