@@ -68,7 +68,8 @@ class PointPillarPyramidLoss(PointPillarLoss2):
         """
         for heter_pyramid_collab
         """
-        if suffix == "": 
+        # if suffix == "":
+        if suffix != "_single":
             return super().forward(output_dict, target_dict)
         assert suffix == "_single"
         batch_size = target_dict['pos_equal_one'].shape[0]
