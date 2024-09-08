@@ -104,6 +104,7 @@ class MultiModalFusion(nn.Module):
             feat_svd = feat_mid.flatten(2)
             # b*c*c, b*c, b*n*n
             feat_s, feat_v, feat_d = torch.linalg.svd(feat_svd.cpu())
+            feat_v = feat_v.to(feat_svd.device)
 
             # 按通道统计大于阈值的元素个数
             counts = torch.sum(feat_v > self.threshold, dim=1)
@@ -384,9 +385,11 @@ class PointPillarVDResX(nn.Module):
         modal_features = []
         m_len = 0
         if 0 in mode:
+            lidar_feature = torch.tanh(lidar_feature)
             modal_features.append(lidar_feature)
             m_len += 1
         if 1 in mode:
+            x = torch.tanh(x)
             modal_features.append(x)
             m_len += 1
 
@@ -395,6 +398,7 @@ class PointPillarVDResX(nn.Module):
             # process radar point cloud
             radar_feature = rearrange(radar_feature, 'b c z y x -> b (c z) y x')
             radar_feature = self.radar_enc(radar_feature)
+            radar_feature = torch.tanh(radar_feature)
             
             if 2 in mode:
                 modal_features.append(radar_feature)
