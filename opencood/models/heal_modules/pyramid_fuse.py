@@ -92,7 +92,7 @@ class PyramidFusion(ResNetBEVBackbone):
                                         self.model_cfg['layer_nums'],
                                         self.model_cfg['layer_strides'],
                                         self.model_cfg['num_filters'],
-                                        inplanes = model_cfg.get('inplanes', 64),
+                                        inplanes = model_cfg.get('inplanes', input_channels),
                                         groups=32,
                                         width_per_group=4)
         self.align_corners = model_cfg.get('align_corners', False)

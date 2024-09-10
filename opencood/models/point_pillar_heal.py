@@ -90,7 +90,7 @@ class PointPillarHEAL(nn.Module):
         print('total depth levels: ', self.D)
         self.camencode = ImgCamEncode(self.D, self.bevC, self.downsample, self.grid_conf['ddiscr'], self.grid_conf['mode'], img_args['use_depth_gt'], img_args['depth_supervision'])
         print("Number of parameter CamEncode: %d" % (sum([param.nelement() for param in self.camencode.parameters()])))
-        
+
         # lidar 分支网络
         pc_args = args['pc_params']
         self.pillar_vfe = PillarVFE(pc_args['pillar_vfe'], num_point_features=4, voxel_size=pc_args['voxel_size'], point_cloud_range=pc_args['lidar_range'])
@@ -108,8 +108,8 @@ class PointPillarHEAL(nn.Module):
         # self.fusion = MultiModalFusion(modality_args['num_modality'], img_args['bev_dim'])
         # self.fusion = MultiModalFusion_Mamba(modality_args['num_modality'], img_args['bev_dim'])
         # print("Number of parameter modal fusion: %d" % (sum([param.nelement() for param in self.fusion.parameters()])))
-        self.backbone = ResNetBEVBackbone(modality_args['bev_backbone'], input_channels=pc_args['point_pillar_scatter']['num_features'])
-        print("Number of parameter bevbackbone: %d" % (sum([param.nelement() for param in self.backbone.parameters()])))
+        # self.backbone = ResNetBEVBackbone(modality_args['bev_backbone'], input_channels=pc_args['point_pillar_scatter']['num_features'])
+        # print("Number of parameter bevbackbone: %d" % (sum([param.nelement() for param in self.backbone.parameters()])))
 
         self.shrink_flag = False
         if 'shrink_header' in modality_args:
@@ -117,8 +117,9 @@ class PointPillarHEAL(nn.Module):
             self.shrink_conv = DownsampleConv(modality_args['shrink_header'])
             print("Number of parameter shrink_conv: %d" % (sum([param.nelement() for param in self.shrink_conv.parameters()])))
         
-        self.pyramid_backbone = PyramidFusion(args['collaborative_fusion'])
-        print(self.pyramid_backbone)
+        self.pyramid_backbone = PyramidFusion(args['collaborative_fusion'], pc_args['point_pillar_scatter']['num_features'])
+        print("Number of parameter pyramid_backbone: %d" % (sum([param.nelement() for param in self.pyramid_backbone.parameters()])))
+        # print(self.pyramid_backbone)
 
         self.cls_head = nn.Conv2d(args['in_head'], args['anchor_number'], kernel_size=1)
         self.reg_head = nn.Conv2d(args['in_head'], 7 * args['anchor_number'], kernel_size=1)
@@ -147,7 +148,7 @@ class PointPillarHEAL(nn.Module):
 
         # batch_dict = self.backbone(batch_dict)
         
-        
+        '''
         # process image to get bev
         # x, rots, trans, intrins, post_rots, post_trans, depth_map = image_inputs_dict['imgs'], image_inputs_dict['rots'], image_inputs_dict['trans'], image_inputs_dict['intrins'], image_inputs_dict['post_rots'], image_inputs_dict['post_trans'], image_inputs_dict['depth_map']
         # geom: ([8, 1, 48, 40, 60, 3]), x: torch.Size([8, 1, 48, 40, 60, 64])
@@ -169,6 +170,10 @@ class PointPillarHEAL(nn.Module):
         x = torch.cat(x.unbind(dim=2), 1)  # 消除掉z维
         
 
+        heter_feature_2d = self.modal_conv(torch.cat([x, spatial_features], dim=1))
+        '''
+        heter_feature_2d = batch_dict['spatial_features']
+
         """For feature transformation"""
         self.H = (self.cav_range[4] - self.cav_range[1])
         self.W = (self.cav_range[3] - self.cav_range[0])
@@ -178,8 +183,7 @@ class PointPillarHEAL(nn.Module):
         # heter_feature_2d is downsampled 2x
         # add croping information to collaboration module
         
-        heter_feature_2d = self.modal_conv(torch.cat([x, spatial_features], dim=1))
-
+        
         fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
                                                 heter_feature_2d,
                                                 record_len, 
