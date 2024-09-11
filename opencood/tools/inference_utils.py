@@ -123,16 +123,23 @@ def inference_intermediate_fusion_withcomm(batch_data, model, dataset):
         The tensor of gt bounding box.
     """
     output_dict = OrderedDict()
-    cav_content = batch_data['ego']
-    output_dict['ego'] = model(cav_content)
-    
-    pred_box_tensor, pred_score, gt_box_tensor = \
-        dataset.post_process(batch_data,
-                             output_dict)
+    # cav_content = batch_data['ego']
+    # output_dict['ego'] = model(cav_content)
+    # pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data, output_dict)
+
+    if isinstance(batch_data, list):
+        cav_content = batch_data
+        output_dict['ego'] = model(cav_content)
+        pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data[0], output_dict)
+    else:
+        cav_content = batch_data['ego']
+        output_dict['ego'] = model(cav_content)    
+        pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data, output_dict)
+
     comm_rates = output_dict['ego']['comm_rate']
-    mask = output_dict['ego']['mask']
-    each_mask = output_dict['ego']['each_mask']
-    return pred_box_tensor, pred_score, gt_box_tensor, comm_rates, mask, each_mask
+    times = output_dict['ego']['time']
+    # each_mask = output_dict['ego']['each_mask']
+    return pred_box_tensor, pred_score, gt_box_tensor, comm_rates, output_dict['ego']['comm_vol'], times
     
 def inference_intermediate_fusion(batch_data, model, dataset, inf=None):
     """

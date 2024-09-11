@@ -25,6 +25,9 @@ from tqdm import tqdm
 from PIL import Image
 import numpy as np
 
+from thop import profile, clever_format
+
+
 def test_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
     parser.add_argument('--model_dir', type=str, required=True,
@@ -127,10 +130,20 @@ def main():
                             0.7: {'tp': [], 'fp': [], 'gt': 0}}
 
     total_comm_rates = []
+    total_times = 0
     # total_box = []
     for i, batch_data in tqdm(enumerate(data_loader)):
+        # if i > 1: continue
         with torch.no_grad():
             batch_data = train_utils.to_device(batch_data, device)
+
+            # macs, params = profile(model, inputs=(batch_data['ego'], ))
+            # # 格式化输出
+            # macs, params = clever_format([macs, params], "%.3f")
+            # print("FLOPs: ", macs)
+            # print("Params: ", params)
+            # print(macs, params)
+            # print(aaa)
             # if opt.fusion_method == 'nofusion':
             #     pred_box_tensor, pred_score, gt_box_tensor = infrence_utils.inference_no_fusion(batch_data, model, opencood_dataset)
             if opt.fusion_method == 'late':
@@ -150,8 +163,9 @@ def main():
                 pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_no_fusion(batch_data, model, opencood_dataset)
             
             elif opt.fusion_method == 'intermediate_with_comm':
-                pred_box_tensor, pred_score, gt_box_tensor, comm_rates, mask, each_mask = inference_utils.inference_intermediate_fusion_withcomm(batch_data, model, opencood_dataset)
+                pred_box_tensor, pred_score, gt_box_tensor, comm_rates, vol, each_time = inference_utils.inference_intermediate_fusion_withcomm(batch_data, model, opencood_dataset)
                 total_comm_rates.append(comm_rates)
+                total_times += each_time
             else:
                 raise NotImplementedError('Only early, late and intermediate, no, intermediate_with_comm fusion modes are supported.')
             if pred_box_tensor is None:
@@ -340,7 +354,7 @@ def main():
                 pass
             
     # print('total_box: ', sum(total_box)/len(total_box))
-
+    print('average time: ', total_times / len(data_loader))
     if len(total_comm_rates) > 0:
         comm_rates = (sum(total_comm_rates)/len(total_comm_rates))
         if not isinstance(comm_rates, float):
