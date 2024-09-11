@@ -70,18 +70,21 @@ class MultiModalFusion(nn.Module):
             nn.Conv2d(dim, 1, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             # nn.Sigmoid(),
+            nn.AdaptiveAvgPool2d((128, 128)),
         )
 
         self.v_func = nn.Sequential(
-            nn.Conv2d(dim, 1, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(dim, 128, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             # nn.Sigmoid(),
+            nn.AdaptiveAvgPool2d((1, 1)),
         )
 
         self.d_func = nn.Sequential(
             nn.Conv2d(dim, 1, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             # nn.Sigmoid(),
+            nn.AdaptiveAvgPool2d((256, 256)),
         )
 
     def forward(self, feats, training):
@@ -91,20 +94,17 @@ class MultiModalFusion(nn.Module):
         B, M, C, H, W = con_feat.shape
         con_feat = rearrange(con_feat, 'b m c h w -> (b m) c h w')
         
-        feat_s = self.s_func(con_feat)
-        feat_v = self.v_func(con_feat)
-        feat_d = self.d_func(con_feat)
-        print(feat_s.shape, feat_v.shape, feat_d.shape)
-        print(aaa)
-        feat_mid, auto_enc_loss = self.cal_rec_loss(con_feat, training)
+        feat_s, feat_v, feat_d = self.s_func(con_feat).squeeze(1), self.v_func(con_feat).flatten(1), self.d_func(con_feat).squeeze(1)
+        # b*1*h*w -> b*c*c, b*c, b*n*n
+        feat_mid, auto_enc_loss, svd_loss = self.cal_rec_loss(con_feat, [feat_s, feat_v, feat_d], training)
 
         # 按通道统计大于阈值的元素个数
         feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
         feat_s, feat_d = map(lambda x: rearrange(x, '(b m) h w -> b m h w', b=B, m=M), (feat_s, feat_d))
 
         # b*c*c, b*c, b*n*n
-        new_s, new_d = map(lambda x: torch.zeros((B, *x.shape[2:])).to(feat_svd.device), (feat_s, feat_d))
-        new_v = torch.zeros((B, new_s.shape[1], new_d.shape[1])).to(feat_svd.device)
+        new_s, new_d = map(lambda x: torch.zeros((B, *x.shape[2:])).to(con_feat.device), (feat_s, feat_d))
+        new_v = torch.zeros((B, new_s.shape[1], new_d.shape[1])).to(con_feat.device)
         
         counts = torch.sum(feat_v > self.threshold, dim=-1)
         total_counts = torch.sum(counts, dim=-1)
@@ -147,9 +147,9 @@ class MultiModalFusion(nn.Module):
 
         con_feat = rearrange(con_feat, '(b m) c h w -> b m c h w', b=B, m=M)
         fused_feat = torch.sum((1 - self.ratio) * scores * con_feat, dim=1) + rec_feat * self.ratio
-        return fused_feat, auto_enc_loss
+        return fused_feat, auto_enc_loss, svd_loss
 
-    def cal_rec_loss(self, feat, training):
+    def cal_rec_loss(self, feat, svd, training):
         feat_mid, feat_rec = self.autoencoder(feat)
 
         if training:
@@ -158,8 +158,8 @@ class MultiModalFusion(nn.Module):
             feat_s, feat_v, feat_d = torch.linalg.svd(feat_svd.cpu())
             feat_s, feat_v, feat_d = map(lambda x: x.to(feat_svd.device), (feat_s, feat_v, feat_d))
 
-            return feat_mid, self.rec_loss(feat, feat_rec)#, self.rec_loss()
-        return feat_mid, 0
+            return feat_mid, self.rec_loss(feat, feat_rec), self.rec_loss(svd[0], feat_s) + self.rec_loss(svd[1], feat_v) + self.rec_loss(svd[2], feat_d)
+        return feat_mid, 0, 0
 
 
 class PointPillarVQM(nn.Module):
@@ -320,7 +320,7 @@ class PointPillarVQM(nn.Module):
                 m_len += 1
 
         # x = self.fusion([lidar_feature], self.modality_adapter)
-        x, rec_loss = self.fusion(modal_features, training=training)
+        x, rec_loss, svd_loss = self.fusion(modal_features, training=training)
 
         # b, m, c, h, w
         if training:
@@ -366,6 +366,7 @@ class PointPillarVQM(nn.Module):
                 'reg_preds': reg_preds[:,-1],
                 'dir_preds': dir_preds[:,-1],
                 'rec_loss': rec_loss,
+                'svd_loss': svd_loss,
                 'modality_num': m_len,
                 'psm': cls_preds[:,-1],
                 'rm': reg_preds[:,-1],
@@ -389,6 +390,7 @@ class PointPillarVQM(nn.Module):
             'reg_preds': reg_preds,
             'dir_preds': dir_preds,
             'rec_loss': rec_loss,
+            'svd_loss': svd_loss,
             'modality_num': m_len,
             'psm': cls_preds,
             'rm': reg_preds,
