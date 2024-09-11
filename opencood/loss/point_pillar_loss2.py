@@ -22,6 +22,11 @@ class PointPillarLoss2(nn.Module):
             self.rec = args['rec']
         else:
             self.rec = None
+        
+        if 'svd' in args:
+            self.rec = args['svd']
+        else:
+            self.rec = None
 
         if 'dir' in args:
             self.dir = args['dir']
@@ -136,6 +141,12 @@ class PointPillarLoss2(nn.Module):
             rec_wg = 1 if self.rec is None else self.rec['weight']
             total_loss += output_dict['rec_loss'] * rec_wg
             self.loss_dict.update({'rec_loss': output_dict['rec_loss'].item()})
+        
+        if 'svd_loss' in output_dict:
+            svd_wg = 1 if self.svd is None else self.svd['weight']
+            total_loss += output_dict['svd_loss'] * svd_wg
+            self.loss_dict.update({'svd_loss': output_dict['svd_loss'].item()})
+        
         return total_loss
 
     @staticmethod
