@@ -5,8 +5,8 @@ validate_dir: 'data/byzhao/OPV2V/validate'
 yaml_parser: "load_cross_modal_point_pillar_params"
 train_params:
   batch_size: &batch_size 2
-  epoches: &epoches 60
-  eval_freq: 5
+  epoches: &epoches 30
+  eval_freq: 2
   save_freq: 1
   max_cav: &max_cav 2
 
@@ -153,7 +153,7 @@ model:
       
       compression: 0  # Compression rate
 
-    params for collaborative fusion: where2comm
+    # params for collaborative fusion: where2comm
     collaborative_fusion:
       fully: False
       voxel_size: *voxel_size
@@ -212,6 +212,6 @@ optimizer:
 
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
-  gamma: 0.4
+  gamma: 0.2
   # step_size: [10, 20, 30]
   step_size: [10, 20, 30, 40, 50]

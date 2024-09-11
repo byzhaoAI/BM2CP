@@ -226,5 +226,5 @@ optimizer:
 
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
-  gamma: 0.4
+  gamma: 0.2
   step_size: [10, 20, 30]
