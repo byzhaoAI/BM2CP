@@ -142,7 +142,10 @@ def main():
             elif opt.fusion_method == 'early':
                 pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_early_fusion(batch_data, model, opencood_dataset)
             elif opt.fusion_method == 'intermediate':
-                pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
+                if 'vqm' in hypes['name']:
+                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset, inf=False)
+                else:
+                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
             elif opt.fusion_method == 'no':
                 pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_no_fusion(batch_data, model, opencood_dataset)
             
