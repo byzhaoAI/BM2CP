@@ -5,6 +5,8 @@
 
 import argparse
 import os
+# 设置环境变量以同步执行 CUDA 内核
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import statistics
 
 import sys
@@ -161,6 +163,8 @@ def main():
                     else:
                         mode = np.random.choice(1, 1)
                     output_dict = model(batch_data['ego'], mode)
+                elif 'vqm' in hypes['name']:
+                    output_dict = model(batch_data['ego'], training=True)
                 else:
                     output_dict = model(batch_data['ego'])
                 #print(output_dict.keys())
