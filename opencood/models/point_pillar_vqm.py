@@ -60,6 +60,7 @@ class MultiModalFusion(nn.Module):
         self.ratio = ratio
         self.autoencoder = Autoencoder()
         self.rec_loss = nn.MSELoss()
+        self.abs_loss = nn.L1Loss()
         self.value_func = nn.Sequential(
             nn.Conv2d(dim * 2, 1, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
@@ -67,21 +68,21 @@ class MultiModalFusion(nn.Module):
         )
 
         self.s_func = nn.Sequential(
-            nn.Conv2d(dim, 1, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             # nn.Sigmoid(),
             nn.AdaptiveAvgPool2d((128, 128)),
         )
 
         self.v_func = nn.Sequential(
-            nn.Conv2d(dim, 128, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             # nn.Sigmoid(),
             nn.AdaptiveAvgPool2d((1, 1)),
         )
 
         self.d_func = nn.Sequential(
-            nn.Conv2d(dim, 1, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             # nn.Sigmoid(),
             nn.AdaptiveAvgPool2d((256, 256)),
@@ -93,10 +94,19 @@ class MultiModalFusion(nn.Module):
         con_feat = torch.stack(feats, dim=1)
         B, M, C, H, W = con_feat.shape
         con_feat = rearrange(con_feat, 'b m c h w -> (b m) c h w')
-        
-        feat_s, feat_v, feat_d = self.s_func(con_feat).squeeze(1), self.v_func(con_feat).flatten(1), self.d_func(con_feat).squeeze(1)
-        # b*1*h*w -> b*c*c, b*c, b*n*n
-        feat_mid, auto_enc_loss, svd_loss = self.cal_rec_loss(con_feat, [feat_s, feat_v, feat_d], training)
+
+        feat_mid, feat_rec = self.autoencoder(con_feat)
+        # b*c*c, b*c, b*n*n
+        feat_s, feat_v, feat_d = self.s_func(feat_mid).squeeze(1), self.v_func(feat_mid).flatten(1), self.d_func(feat_mid).squeeze(1)
+        auto_enc_loss, svd_loss = 0, 0
+        if training:
+            # 构建对角矩阵
+            diag_v = torch.zeros((B*M, feat_s.shape[1], feat_d.shape[1])).to(con_feat.device)
+            diag_v[:, :min(feat_s.shape[1], feat_d.shape[1]), :min(feat_s.shape[1], feat_d.shape[1])] = torch.diag_embed(feat_v)
+            # 恢复原始矩阵 A
+            rec_feat_mid = torch.bmm(feat_s, torch.bmm(diag_v, feat_d))
+            auto_enc_loss = self.rec_loss(con_feat, feat_rec)
+            svd_loss = self.abs_loss(feat_mid.flatten(2), rec_feat_mid)
 
         # 按通道统计大于阈值的元素个数
         feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
@@ -148,18 +158,6 @@ class MultiModalFusion(nn.Module):
         con_feat = rearrange(con_feat, '(b m) c h w -> b m c h w', b=B, m=M)
         fused_feat = torch.sum((1 - self.ratio) * scores * con_feat, dim=1) + rec_feat * self.ratio
         return fused_feat, auto_enc_loss, svd_loss
-
-    def cal_rec_loss(self, feat, svd, training):
-        feat_mid, feat_rec = self.autoencoder(feat)
-
-        if training:
-            feat_svd = feat_mid.flatten(2)
-            # (b*m)*c*c, (b*m)*c, (b*m)*n*n
-            feat_s, feat_v, feat_d = torch.linalg.svd(feat_svd.cpu())
-            feat_s, feat_v, feat_d = map(lambda x: x.to(feat_svd.device), (feat_s, feat_v, feat_d))
-
-            return feat_mid, self.rec_loss(feat, feat_rec), self.rec_loss(svd[0], feat_s) + self.rec_loss(svd[1], feat_v) + self.rec_loss(svd[2], feat_d)
-        return feat_mid, 0, 0
 
 
 class PointPillarVQM(nn.Module):

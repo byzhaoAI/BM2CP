@@ -173,7 +173,7 @@ def main():
                 final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
                 collect_unit_loss = [output_dict['rec_loss'].item(), output_dict['svd_loss'].item(), final_loss.item()]
                 for m_idx in range(output_dict['modality_num']):
-                    unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], '_{}'.format(m_idx))
+                    unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
                     final_loss = final_loss + unit_loss
                     collect_unit_loss.append(unit_loss.item())
                 final_loss = criterion.rec_forward(output_dict, final_loss)

@@ -24,9 +24,9 @@ class PointPillarLoss2(nn.Module):
             self.rec = None
         
         if 'svd' in args:
-            self.rec = args['svd']
+            self.svd = args['svd']
         else:
-            self.rec = None
+            self.svd = None
 
         if 'dir' in args:
             self.dir = args['dir']
@@ -65,12 +65,12 @@ class PointPillarLoss2(nn.Module):
         pos_normalizer = positives.sum(1, keepdim=True).float()
 
         # rename variable 
-        if f'psm{suffix}' in output_dict:
-            output_dict[f'cls_preds{suffix}'] = output_dict[f'psm{suffix}']
-        if f'rm{suffix}' in output_dict:
-            output_dict[f'reg_preds{suffix}'] = output_dict[f'rm{suffix}']
-        if f'dm{suffix}' in output_dict:
-            output_dict[f'dir_preds{suffix}'] = output_dict[f'dm{suffix}']
+        # if f'psm{suffix}' in output_dict:
+        #     output_dict[f'cls_preds{suffix}'] = output_dict[f'psm{suffix}']
+        # if f'rm{suffix}' in output_dict:
+        #     output_dict[f'reg_preds{suffix}'] = output_dict[f'rm{suffix}']
+        # if f'dm{suffix}' in output_dict:
+        #     output_dict[f'dir_preds{suffix}'] = output_dict[f'dm{suffix}']
 
         total_loss = 0
 

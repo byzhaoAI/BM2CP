@@ -195,9 +195,9 @@ loss:
       relative_downsample: [1, 2, 4]
       weight: [0.4, 0.2, 0.1]
     rec:
-      weight: 0.1
+      weight: 1
     svd:
-      weight: 0.1
+      weight: 1
 
 
 optimizer:
