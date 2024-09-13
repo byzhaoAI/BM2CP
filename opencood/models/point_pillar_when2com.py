@@ -29,12 +29,14 @@ class PointPillarWhen2com(nn.Module):
                                     point_cloud_range=args['lidar_range'])
         self.scatter = PointPillarScatter(args['point_pillar_scatter'])
         self.backbone = BaseBEVBackbone(args['base_bev_backbone'], 64)
+        print("Number of parameter backbone: %d" % (sum([param.nelement() for param in self.backbone.parameters()])))
         
         # used to downsample the feature map for efficient computation
         self.shrink_flag = False
         if 'shrink_header' in args:
             self.shrink_flag = True
             self.shrink_conv = DownsampleConv(args['shrink_header'])
+            print("Number of parameter shrink conv: %d" % (sum([param.nelement() for param in self.shrink_conv.parameters()])))
         self.compression = False
 
         if args['compression'] > 0:
@@ -42,6 +44,7 @@ class PointPillarWhen2com(nn.Module):
             self.naive_compressor = NaiveCompressor(256, args['compression'])
         
         self.fusion_net = When2comFusion(args['v2vfusion'])
+        print("Number of parameter fusion network: %d" % (sum([param.nelement() for param in self.fusion_net.parameters()])))
 
         self.cls_head = nn.Conv2d(128 * 2, args['anchor_number'],
                                   kernel_size=1)
