@@ -6,7 +6,7 @@ import torch.nn as nn
 # from icecream import ic
 from opencood.models.common_modules.pillar_vfe import PillarVFE
 from opencood.models.common_modules.point_pillar_scatter import PointPillarScatter
-from opencood.models.common_modules.base_bev_backbone_resnet import ResNetBEVBackbone 
+from opencood.models.coalign_modules.base_bev_backbone_resnet import ResNetBEVBackbone 
 from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone 
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
