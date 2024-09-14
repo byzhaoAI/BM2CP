@@ -1,0 +1,217 @@
+name: dair_covqm
+data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
+root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+
+yaml_parser: "load_cross_modal_point_pillar_params"
+train_params:
+  batch_size: &batch_size 2 #4 #6
+  epoches: 30
+  eval_freq: 2
+  save_freq: 1
+  max_cav: &max_cav 2
+
+device: &device cuda
+train: &train True
+
+#comm_range: 100
+noise_setting:
+  add_noise: False
+  args: 
+    pos_std: 0.2
+    rot_std: 0.2
+    pos_mean: 0
+    rot_mean: 0
+
+fusion:
+  core_method: 'LiDARCameraIntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset(V2X) supported. 
+  args: 
+    proj_first: &proj_first false
+    clip_pc: false
+    # core_method: 'CameraIntermediateFusionDataset' configs
+    grid_conf: &grid_conf
+      xbound: [-51.2, 51.2, 0.4]   # 限制x方向的范围并划分网格
+      ybound: [-51.2, 51.2, 0.4]   # 限制y方向的范围并划分网格
+      zbound: [-3, 1, 4.0]   # 限制z方向的范围并划分网格
+      ddiscr: [2, 50, 48]
+      mode: 'LID'
+    data_aug_conf: &data_aug_conf
+      resize_lim: [0.7, 0.8]
+      final_dim: [360, 480]
+      rot_lim: [0, 0] #[-3.6, 3.6]
+      H: 600
+      W: 800
+      rand_flip: False
+      bot_pct_lim: [0.0, 0.20]
+      cams: ['camera0', 'camera1', 'camera2', 'camera3']
+      Ncams: 4
+
+# preprocess-related
+preprocess:
+  # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
+  core_method: 'SpVoxelPreprocessor'
+  args:
+    voxel_size: &voxel_size [0.4, 0.4, 4]
+    max_points_per_voxel: 32
+    max_voxel_train: 32000
+    max_voxel_test: 70000
+  # lidar range for each individual cav. Format: xyzxyz minmax
+  cav_lidar_range: &cav_lidar [ -51.2, -51.2, -3, 51.2, 51.2, 1 ]
+
+data_augment:
+  - NAME: random_world_flip
+    ALONG_AXIS_LIST: [ 'x' ]
+
+  - NAME: random_world_rotation
+    WORLD_ROT_ANGLE: [ -0.78539816, 0.78539816 ]
+
+  - NAME: random_world_scaling
+    WORLD_SCALE_RANGE: [ 0.95, 1.05 ]
+
+# anchor box related
+postprocess:
+  core_method: 'VoxelPostprocessor' # VoxelPostprocessor, BevPostprocessor supported
+  gt_range: *cav_lidar
+  # dir_args: &dir_args
+  #   dir_offset: 0.7853
+  #   num_bins: 2
+  anchor_args:
+    cav_lidar_range: *cav_lidar
+    l: 4.5
+    w: 2
+    h: 1.56
+    r: &anchor_yaw [0, 90]
+    num: &anchor_num 2
+    feature_stride: 2
+  target_args:
+    pos_threshold: 0.6
+    neg_threshold: 0.45
+    score_threshold: 0.2
+  order: 'hwl' # hwl or lwh
+  max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
+  nms_thresh: 0.15
+  dir_args: &dir_args
+    dir_offset: 0.7853
+    num_bins: 2
+    anchor_yaw: *anchor_yaw
+
+# model related
+model:
+  core_method: point_pillar_covqm
+  
+  args:
+    lidar_range: *cav_lidar
+    use_radar: *use_radar
+    use_camera: *use_camera
+    max_cav: *max_cav
+    device: *device
+    train: *train
+    proj_first: *proj_first
+    supervise_single: False
+    # freeze
+    backbone_fix: false
+
+    # params for camera branch
+    img_params:
+      grid_conf: *grid_conf
+      data_aug_conf: *data_aug_conf
+      img_downsample: 8
+      bev_dim: 64
+      use_depth_gt: false
+      depth_supervision: false #true  
+
+    # params for lidar branch
+    pc_params:
+      voxel_size: *voxel_size
+      lidar_range: *cav_lidar
+      pillar_vfe:
+        use_norm: true
+        with_distance: false
+        use_absolute_xyz: true
+        num_filters: [64]
+      point_pillar_scatter:
+        num_features: 64
+
+    # params for modality fusion
+    modality_fusion:
+      num_modality: 2
+      bev_backbone:
+        encode_first: false
+        multi_scale: true
+        layer_nums: &layer_nums [3, 4, 5] #[3, 4, 5]
+        layer_strides: [2, 2, 2]
+        num_filters: &num_filters [64, 128, 256]
+        upsample_strides: [1, 2, 4]
+        num_upsample_filter: [128, 128, 128]
+        voxel_size: *voxel_size
+
+      shrink_header:
+        use: true
+        input_dim: 384 # 128 * 3
+        dim: [ &out_channels 256 ]
+        kernal_size: [ 3 ]
+        stride: [ 2 ]
+        padding: [ 1 ]
+      
+      compression: 0 # compression rate
+
+    # params for collaborative fusion: where2comm
+    collaborative_fusion:
+      resnext: true
+      layer_nums: [3, 5, 8]
+      layer_strides: [1, 2, 2]
+      num_filters: [64, 128, 256]
+      upsample_strides: [1, 2, 4]
+      num_upsample_filter: [128, 128, 128]
+      anchor_number: *anchor_num
+
+    # params for prediction
+    in_head: 256
+    head_dim: 256
+    outC: *out_channels
+    anchor_number: *anchor_num
+    dir_args: *dir_args
+
+
+loss:
+  core_method: point_pillar_pyramid_loss
+  args:
+    pos_cls_weight: 2.0
+    cls:
+      type: 'SigmoidFocalLoss'
+      alpha: 0.25
+      gamma: 2.0
+      weight: 1.0
+    reg:
+      type: 'WeightedSmoothL1Loss'
+      sigma: 3.0
+      codewise: true
+      weight: 2.0
+    dir:
+      type: 'WeightedSoftmaxClassificationLoss'
+      weight: 0.2
+      args: *dir_args
+    depth:
+      weight: 1.0
+    pyramid:
+      relative_downsample: [1, 2, 4]
+      weight: [0.4, 0.2, 0.1]
+    rec:
+      weight: 1
+    svd:
+      weight: 1
+
+
+optimizer:
+  core_method: Adam
+  lr: 0.002
+  args:
+    eps: 1e-10
+    weight_decay: 1e-4
+
+lr_scheduler:
+  core_method: multistep #step, multistep and Exponential support
+  gamma: 0.1
+  step_size: [10, 20]
+
