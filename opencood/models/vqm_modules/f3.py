@@ -42,21 +42,10 @@ class CoVQMF3(nn.Module):
         self.vox_util = vox.Vox_util(self.Z, self.Y, self.X, scene_centroid=scene_centroid, bounds=bounds, assert_cube=False)
         self.camencode = CamEncode(self.bevC, self.downsample)
 
-        # freeze
-        if args['backbone_fix']:
-            self.backbone_fix()
-
-    def backbone_fix(self):
-        """
-        Fix the parameters of backbone during finetune on timedelay。
-        """
-        pass
-
     def regroup(self, x, record_len):
         cum_sum_len = torch.cumsum(record_len, dim=0)
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
-
 
     def forward(self, image_inputs_dict, mode=[0,1,2]):   # loss: 5.91->0.76
         x, intrins, extrins = image_inputs_dict['imgs'], image_inputs_dict['intrins'], image_inputs_dict['extrins']
