@@ -201,7 +201,7 @@ class PointPillarCoVQM(nn.Module):
 
         # back forward projection loss
         if training and (self.agent_len > 1 or (self.f1 is not None and m_len > 1)):
-            for idx in enumerate(len(record_len)):
+            for idx in range(len(record_len)):
                 ego_feats = ego_features[idx]
                 for ego_idx in range(ego_feats.shape[0]):
                     bfp_loss = bfp_loss + match_loss(

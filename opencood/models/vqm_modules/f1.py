@@ -134,6 +134,7 @@ class MultiModalFusion(nn.Module):
         best_indices = torch.argmax(counts, dim=-1)
 
 
+        con_feat = rearrange(con_feat, '(b m) c h w -> b m c h w', b=B, m=M)
         x = con_feat
         for i in range(self.num_layers):
             Adj = self.gc(x)
@@ -185,7 +186,7 @@ class CoVQMF1(nn.Module):
             self.frustum = self.create_frustum().clone().detach().requires_grad_(False).to(torch.device(self.device))  # frustum: DxfHxfWx3
             self.D, _, _, _ = self.frustum.shape
             print('total depth levels: ', self.D)
-            self.camencode = ImgCamEncode(self.D, self.bevC, self.downsample, self.grid_conf['ddiscr'], self.grid_conf['mode'], img_args['use_depth_gt'], img_args['depth_supervision'])
+            self.camencode = ImgCamEncode(self.D, self.bevC, self.downsample, self.grid_conf['ddiscr'], self.grid_conf['mode'])
 
         if self.use_lidar:
             # lidar 分支网络
