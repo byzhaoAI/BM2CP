@@ -38,6 +38,9 @@ class PointPillarCoVQM(nn.Module):
                 self.f1 = CoVQMF1(args['f1'])
             self.agent_len += 1
             print("Number of parameter f1: %d" % (sum([param.nelement() for param in self.f1.parameters()])))
+        if self.agent_len > self.max_cav:
+            self.agent_len -= 1
+            self.f1 = None
         
 
         self.f2, self.f2_fix = None, False
@@ -52,8 +55,10 @@ class PointPillarCoVQM(nn.Module):
                 self.f2 = CoVQMF2(args['f2'])
             self.agent_len += 1
             print("Number of parameter f2: %d" % (sum([param.nelement() for param in self.f2.parameters()])))
+        if self.agent_len > self.max_cav:
+            self.agent_len -= 1
+            self.f2 = None
         self.f2_proj = nn.Conv2d(args['fusion']['num_filters'][0], args['fusion']['num_filters'][0], kernel_size=3, stride=1, padding=1)
-
 
         self.f3, self.f3_fix = None, False
         if f3_net is not None:
@@ -67,6 +72,9 @@ class PointPillarCoVQM(nn.Module):
                 self.f3 = CoVQMF3(args['f3'])
             self.agent_len += 1
             print("Number of parameter f3: %d" % (sum([param.nelement() for param in self.f3.parameters()])))
+        if self.agent_len > self.max_cav:
+            self.agent_len -= 1
+            self.f3 = None
         self.f3_proj = nn.Conv2d(args['fusion']['num_filters'][0], args['fusion']['num_filters'][0], kernel_size=3, stride=1, padding=1)
 
 
