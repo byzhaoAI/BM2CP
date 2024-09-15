@@ -171,11 +171,12 @@ def main():
                 # first argument is always your output dictionary,
                 # second argument is always your label dictionary.
                 final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
-                collect_unit_loss = [output_dict['rec_loss'].item(), output_dict['svd_loss'].item(), final_loss.item()]
-                for m_idx in range(output_dict['modality_num']):
-                    unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
-                    final_loss = final_loss + unit_loss
-                    collect_unit_loss.append(unit_loss.item())
+                collect_unit_loss = [output_dict['rec_loss'].item(), output_dict['svd_loss'].item(), output_dict['bfp_loss'].item()]
+                if 'modality_num' in output_dict and output_dict['modality_num'] > 1:
+                    for m_idx in range(output_dict['modality_num']):
+                        unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
+                        final_loss = final_loss + unit_loss
+                        collect_unit_loss.append(unit_loss.item())
                 final_loss = criterion.rec_forward(output_dict, final_loss)
 
             if False:
@@ -201,7 +202,10 @@ def main():
                     final_loss += round_loss_v
             
             with open(os.path.join(saved_path, 'train_loss.txt'), 'a+') as f:
-                msg = 'Epoch[{}], iter[{}/{}], loss[{}], mode[{}], unit_loss{}. \n'.format(epoch, i, len(train_loader), final_loss, mode, collect_unit_loss)
+                msg = "[epoch %d][%d/%d][%s] || Total || %.5f, Rec: %.5f, SVD: %.5f, BFP: %.5f || " % (
+                  epoch+1, i+1, len(train_loader), mode,
+                  final_loss, collect_unit_loss[0], collect_unit_loss[1], collect_unit_loss[2])
+                msg += f"Others: {collect_unit_loss[3:]} \n"
                 f.write(msg)
 
             #print(a)
@@ -214,10 +218,10 @@ def main():
             if hypes['lr_scheduler']['core_method'] == 'cosineannealwarm':
                 scheduler.step_update(epoch * len(train_loader) + i)
         
-        if epoch % hypes['train_params']['save_freq'] == 0:
+        if (epoch+1) % hypes['train_params']['save_freq'] == 0:
             torch.save(model.state_dict(), os.path.join(saved_path, 'net_epoch%d.pth' % (epoch + 1)))
 
-        if epoch % hypes['train_params']['eval_freq'] == 0:
+        if (epoch+1) % hypes['train_params']['eval_freq'] == 0:
             valid_ave_loss = []
 
             with torch.no_grad():
@@ -248,7 +252,9 @@ def main():
                                     mode = np.array([0, 1])
                             else:
                                 mode = np.array([0])
-                            output_dict = model(batch_data['ego'], mode)
+                            output_dict = model(batch_data['ego'], mode=mode)
+                        elif 'covqm' in hypes['name']:
+                            output_dict = model(batch_data['ego'], training=False)
                         else:
                             output_dict = model(batch_data['ego'])
 
