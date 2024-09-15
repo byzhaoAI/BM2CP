@@ -171,6 +171,68 @@ def load_cross_modal_point_pillar_params(param):
     anchor_args['D'] = math.ceil((cav_lidar_range[5] - cav_lidar_range[2]) / vd)
 
     param['postprocess'].update({'anchor_args': anchor_args})
+    param['preprocess']['args'].update({'vw': vw})
+    param['preprocess']['args'].update({'vh': vh})
+    param['preprocess']['args'].update({'vd': vd})
+    param['preprocess']['args'].update({'T': param['preprocess']['args']['max_points_per_voxel']})
+    
+    if 'model' in param:
+        param['model']['args']['W'] = anchor_args['W']
+        param['model']['args']['H'] = anchor_args['H']
+        param['model']['args']['D'] = anchor_args['D']
+
+    return param
+
+
+def load_hetero_params(param):
+    """
+    Based on the lidar range and resolution of voxel, calcuate the anchor box
+    and target resolution.
+
+    Parameters
+    ----------
+    param : dict
+        Original loaded parameter dictionary.
+
+    Returns
+    -------
+    param : dict
+        Modified parameter dictionary with new attribute.
+    """
+    cav_lidar_range = param['preprocess']['cav_lidar_range']
+    voxel_size = param['preprocess']['args']['voxel_size']
+
+    grid_size = (np.array(cav_lidar_range[3:6]) - np.array(cav_lidar_range[0:3])) / np.array(voxel_size)
+    grid_size = np.round(grid_size).astype(np.int64)
+
+    if 'f1' in param['model']['args'] and 'pc_params' in param['model']['args']['f1']:
+        param['model']['args']['f1']['pc_params']['point_pillar_scatter']['grid_size'] = grid_size
+    if 'f2' in param['model']['args']:
+        param['model']['args']['f2']['grid_size'] = grid_size
+
+    anchor_args = param['postprocess']['anchor_args']
+
+    vw = voxel_size[0]
+    vh = voxel_size[1]
+    vd = voxel_size[2]
+
+    anchor_args['vw'] = vw
+    anchor_args['vh'] = vh
+    anchor_args['vd'] = vd
+
+    anchor_args['W'] = math.ceil((cav_lidar_range[3] - cav_lidar_range[0]) / vw) # W is image width, but along with x axis in lidar coordinate
+    anchor_args['H'] = math.ceil((cav_lidar_range[4] - cav_lidar_range[1]) / vh) # H is image height
+    anchor_args['D'] = math.ceil((cav_lidar_range[5] - cav_lidar_range[2]) / vd)
+
+    param['postprocess'].update({'anchor_args': anchor_args})
+    # param['preprocess']['args'].update({'vw': vw})
+    # param['preprocess']['args'].update({'vh': vh})
+    # param['preprocess']['args'].update({'vd': vd})
+    # param['preprocess']['args'].update({'T': param['preprocess']['args']['max_points_per_voxel']})
+    
+    param['model']['args']['W'] = anchor_args['W']
+    param['model']['args']['H'] = anchor_args['H']
+    param['model']['args']['D'] = anchor_args['D']
 
     return param
 
