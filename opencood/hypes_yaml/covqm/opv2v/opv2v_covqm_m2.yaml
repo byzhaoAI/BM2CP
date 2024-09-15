@@ -1,18 +1,17 @@
-name: opv2v_covqm
+name: opv2v_covqm_m2
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
-yaml_parser: "load_cross_modal_point_pillar_params"
+yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 1
+  batch_size: &batch_size 2
   epoches: &epoches 30
   eval_freq: 2
   save_freq: 1
   max_cav: &max_cav 2
 
 device: &device cuda
-use_radar: &use_radar False
-use_camera: &use_camera True
+
 
 wild_setting:
   seed: 20
@@ -27,7 +26,7 @@ wild_setting:
   backbone_delay: 10  # ms
 
 fusion:
-  core_method: 'MultiModalIntermediateFusionDatasetOPV2V'  # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'LiDARCameraIntermediateFusionDatasetOPV2V_V3' # 'MultiModalIntermediateFusionDatasetOPV2V'  # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args: 
     proj_first: &proj_first false
     clip_pc: false
@@ -51,14 +50,26 @@ fusion:
 # preprocess-related
 preprocess:
   # Options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
-  core_method: 'SpVoxelPreprocessor'
-  args:
-    voxel_size: &voxel_size [ 0.4, 0.4, 4 ]
-    max_points_per_voxel: 32
-    max_voxel_train: 32000
-    max_voxel_test: 70000
-  # LiDAR range for each individual CAV
-  cav_lidar_range: &cav_lidar [ -51.2, -51.2, -3, 51.2, 51.2, 1 ]
+  f1:
+    core_method: 'SpVoxelPreprocessor'
+    args:
+      voxel_size: &voxel_size1 [ 0.4, 0.4, 4 ]
+      max_points_per_voxel: 32
+      max_voxel_train: 32000
+      max_voxel_test: 70000
+    # LiDAR range for each individual CAV
+    cav_lidar_range: &cav_lidar [ -51.2, -51.2, -3, 51.2, 51.2, 1 ]
+  f2:
+    core_method: 'SpVoxelPreprocessor'
+    args:
+      voxel_size: &voxel_size2 [0.1, 0.1, 0.1]
+      max_points_per_voxel: 5
+      max_voxel_train: 36000
+      max_voxel_test: 70000
+    # LiDAR range for each individual CAV
+    cav_lidar_range: *cav_lidar
+  cav_lidar_range: *cav_lidar
+
 
 data_augment:
   - NAME: random_world_flip
@@ -97,64 +108,32 @@ model:
   core_method: point_pillar_covqm
 
   args:
-    lidar_range: *cav_lidar
-    use_radar: *use_radar
-    use_camera: *use_camera
-    max_cav: *max_cav
     device: *device
+    lidar_range: *cav_lidar
+    max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
     backbone_fix: False
 
-    # params for camera branch
-    img_params:
-      grid_conf: *grid_conf
-      data_aug_conf: *data_aug_conf
-      img_downsample: 4
-      bev_dim: 64
-      use_depth_gt: false
-      depth_supervision: false #true
-    
-    max_cav: *max_cav
+    f2:
+      # second 
+      mean_vfe:
+        feature_points: 4
+      backbone_3d: # []
+        num_features_out: 32 # 64/2
 
-    # params for lidar branch
-    pc_params:
-      voxel_size: *voxel_size
-      lidar_range: *cav_lidar
-      pillar_vfe:
-        use_norm: True
-        with_distance: False
-        use_absolute_xyz: True
-        num_filters: [ 64 ]
-      point_pillar_scatter:
-        num_features: 64
+    shrink_header:
+      use: true
+      input_dim: 384  # 128 * 3
+      dim: [ &out_channels 256 ]
+      kernal_size: [ 3 ]
+      stride: [ 2 ]
+      padding: [ 1 ]
     
-    # params for modality fusion
-    modality_fusion:
-      num_modality: 2
-      bev_backbone:
-        encode_first: false
-        multi_scale: true
-
-        layer_nums: &layer_nums [3, 4, 5] #[ 3, 5, 8 ]
-        layer_strides: [ 2, 2, 2 ]
-        num_filters: &num_filters [ 64, 128, 256 ]
-        upsample_strides: [ 1, 2, 4 ]
-        num_upsample_filter: [ 128, 128, 128 ]
-        voxel_size: *voxel_size
-      
-      shrink_header:
-        use: true
-        input_dim: 384  # 128 * 3
-        dim: [ &out_channels 256 ]
-        kernal_size: [ 3 ]
-        stride: [ 2 ]
-        padding: [ 1 ]
-      
-      compression: 0  # Compression rate
+    compression: 0  # Compression rate
 
     # params for collaborative fusion: where2comm
-    collaborative_fusion:
+    fusion:
       resnext: true
       layer_nums: [3, 5, 8]
       layer_strides: [1, 2, 2]
@@ -164,8 +143,6 @@ model:
       anchor_number: *anchor_num
 
     # params for prediction
-    in_head: 256
-    head_dim: 256
     outC: *out_channels
     anchor_number: *anchor_num
     dir_args: *dir_args
@@ -197,6 +174,8 @@ loss:
     rec:
       weight: 1
     svd:
+      weight: 1
+    bfp:
       weight: 1
 
 

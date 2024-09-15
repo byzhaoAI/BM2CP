@@ -199,16 +199,15 @@ def load_hetero_params(param):
     param : dict
         Modified parameter dictionary with new attribute.
     """
-    cav_lidar_range = param['preprocess']['cav_lidar_range']
-    voxel_size = param['preprocess']['args']['voxel_size']
+    # for point pillar
+    cav_lidar_range = param['preprocess']['f1']['cav_lidar_range']
+    voxel_size = param['preprocess']['f1']['args']['voxel_size']
 
     grid_size = (np.array(cav_lidar_range[3:6]) - np.array(cav_lidar_range[0:3])) / np.array(voxel_size)
     grid_size = np.round(grid_size).astype(np.int64)
 
     if 'f1' in param['model']['args'] and 'pc_params' in param['model']['args']['f1']:
         param['model']['args']['f1']['pc_params']['point_pillar_scatter']['grid_size'] = grid_size
-    if 'f2' in param['model']['args']:
-        param['model']['args']['f2']['grid_size'] = grid_size
 
     anchor_args = param['postprocess']['anchor_args']
 
@@ -233,6 +232,15 @@ def load_hetero_params(param):
     param['model']['args']['W'] = anchor_args['W']
     param['model']['args']['H'] = anchor_args['H']
     param['model']['args']['D'] = anchor_args['D']
+
+    # for second
+    cav_lidar_range = param['preprocess']['f2']['cav_lidar_range']
+    voxel_size = param['preprocess']['f2']['args']['voxel_size']
+
+    grid_size = (np.array(cav_lidar_range[3:6]) - np.array(cav_lidar_range[0:3])) / np.array(voxel_size)
+    grid_size = np.round(grid_size).astype(np.int64)
+    if 'f2' in param['model']['args']:
+        param['model']['args']['f2']['grid_size'] = grid_size
 
     return param
 

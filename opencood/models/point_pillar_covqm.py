@@ -106,6 +106,7 @@ class PointPillarCoVQM(nn.Module):
     def forward(self, data_dict, mode=[0,1], training=True):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
+        rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
         
         features = []
         ego_features = []
@@ -125,7 +126,7 @@ class PointPillarCoVQM(nn.Module):
             if isinstance(f1_output, tuple):
                 f, m_len, rec_loss, svd_loss = f1_output
             else:
-                f, m_len, rec_loss, svd_loss = f1_output.unsqueeze(1), 1, torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
+                f, m_len = f1_output.unsqueeze(1), 1
             
             features, ego_features = self.regroup(f, record_len, select_idx=0)
             if self.agent_len <= 1:
@@ -144,21 +145,23 @@ class PointPillarCoVQM(nn.Module):
             }
             f = self.f2(batch_dict).unsqueeze(1)
             
-            select_x, select_ego = self.regroup(f, record_len, select_idx=1)
-            if features:
-                for i in range(len(record_len)):
-                    if select_x[i]:
-                        features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len+1,1,1,1)], dim=0)
+            if self.agent_len <= 1:
+                features = f
             else:
-                features = select_x
-                if self.agent_len <= 1:
-                    features = f
+                select_x, select_ego = self.regroup(f, record_len, select_idx=1)
+                if features:
+                    for i in range(len(record_len)):
+                        if select_x[i]:
+                            features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len+1,1,1,1)], dim=0)
+                else:
+                    features = select_x
             
-            if ego_features:
-                for i in range(len(record_len)):
-                    ego_features[i] = torch.cat([ego_features[i], select_ego[i]], dim=1)
-            else:
-                ego_features = select_ego
+                if ego_features:
+                    for i in range(len(record_len)):
+                        ego_features[i] = torch.cat([ego_features[i], select_ego[i]], dim=1)
+                else:
+                    ego_features = select_ego
+            
             modality_len.append(1)
 
         # process agent 3 data to get feature f3
@@ -166,21 +169,22 @@ class PointPillarCoVQM(nn.Module):
         if self.f3 is not None:
             f = self.f3(data_dict['image_inputs']).unsqueeze(1)
             
-            select_x, select_ego = self.regroup(f, record_len, select_idx=2)
-            if features:
-                for i in range(len(record_len)):
-                    if select_x[i]:
-                        features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len+1,1,1,1)], dim=0)
+            if self.agent_len <= 1:
+                features = f
             else:
-                features = select_x
-                if self.agent_len <= 1:
-                    features = f
+                select_x, select_ego = self.regroup(f, record_len, select_idx=2)
+                if features:
+                    for i in range(len(record_len)):
+                        if select_x[i]:
+                            features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len+1,1,1,1)], dim=0)
+                else:
+                    features = select_x
             
-            if ego_features:
-                for i in range(len(record_len)):
-                    ego_features[i] = torch.cat([ego_features[i], select_ego[i]], dim=1)
-            else:
-                ego_features = select_ego
+                if ego_features:
+                    for i in range(len(record_len)):
+                        ego_features[i] = torch.cat([ego_features[i], select_ego[i]], dim=1)
+                else:
+                    ego_features = select_ego
             
             modality_len.append(1)
 
@@ -188,7 +192,6 @@ class PointPillarCoVQM(nn.Module):
             features = torch.cat(features, dim=0)
 
         # back forward projection loss
-        bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device)
         if training and (self.agent_len > 1 or (self.f1 is not None and m_len > 1)):
             for idx in enumerate(len(record_len)):
                 ego_feats = ego_features[idx]

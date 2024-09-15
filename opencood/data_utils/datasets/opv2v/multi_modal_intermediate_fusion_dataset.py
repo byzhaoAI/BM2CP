@@ -530,12 +530,12 @@ class MultiModalIntermediateFusionDataset(torch.utils.data.Dataset):
                 img_src.append(Image.open(image_path))
             data[cav_id]['camera_np'] = img_src
 
-            depth_src = []
-            for idx in range(self.data_aug_conf['Ncams']):
-                depth = cv2.imread(cav_content[timestamp_key_delay]['depth'][idx])
-                depth = cv2.cvtColor(depth, cv2.COLOR_BGR2GRAY)
-                depth_src.append(depth)
-            data[cav_id]['camera_depth'] = depth_src
+            # depth_src = []
+            # for idx in range(self.data_aug_conf['Ncams']):
+            #     depth = cv2.imread(cav_content[timestamp_key_delay]['depth'][idx])
+            #     depth = cv2.cvtColor(depth, cv2.COLOR_BGR2GRAY)
+            #     depth_src.append(depth)
+            # data[cav_id]['camera_depth'] = depth_src
             
             radar_src = []
             yaw_angles = [0, -30, 30, 180, -150, 150]

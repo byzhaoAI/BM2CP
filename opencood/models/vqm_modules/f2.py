@@ -17,13 +17,21 @@ class CoVQMF2(nn.Module):
         # sparse 3d backbone
         self.backbone_3d = VoxelBackBone8x(args['backbone_3d'], 4, args['grid_size'])
 
+        out_channels = args['backbone_3d']['num_features_out'] * 2
+        self.tconv = nn.Sequential(
+            nn.ConvTranspose2d(out_channels, out_channels, kernel_size=2, stride=2),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
     def forward(self, batch_dict):
         batch_dict = self.mean_vfe(batch_dict)
         batch_dict = self.backbone_3d(batch_dict)
         # height compression
         batch_dict = self.height_compression(batch_dict)
 
-        spatial_features = data_dict['spatial_features']
+        spatial_features = self.tconv(batch_dict['spatial_features'])
         return spatial_features
 
     def height_compression(self, batch_dict):
