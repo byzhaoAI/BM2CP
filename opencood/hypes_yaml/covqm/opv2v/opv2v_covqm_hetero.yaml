@@ -145,7 +145,8 @@ model:
       # second 
       mean_vfe:
         feature_points: 4
-      backbone_3d: []
+      backbone_3d: # []
+        num_features_out: 32 # 64/2
 
     f3:
       img_unproj:
