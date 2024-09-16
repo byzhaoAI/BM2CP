@@ -255,6 +255,45 @@ def create_model(hypes):
     return instance
 
 
+def create_covqm_model(hypes, f1_net=None, f2_net=None, f3_net=None):
+    """
+    Import the module "models/[model_name].py
+
+    Parameters
+    __________
+    hypes : dict
+        Dictionary containing parameters.
+
+    Returns
+    -------
+    model : opencood,object
+        Model object.
+    """
+    backbone_name = hypes['model']['core_method']
+    backbone_config = hypes['model']['args']
+
+    model_filename = "opencood.models." + backbone_name
+    model_lib = importlib.import_module(model_filename)
+    model = None
+    target_model_name = backbone_name.replace('_', '')
+    print('model_lib: ', model_lib)
+    print('target_model_name: ', target_model_name)
+
+    for name, cls in model_lib.__dict__.items():
+        if name.lower() == target_model_name.lower():
+            print(name.lower(), cls)
+            model = cls
+
+    if model is None:
+        print('backbone not found in models folder. Please make sure you '
+              'have a python file named %s and has a class '
+              'called %s ignoring upper/lower case' % (model_filename,
+                                                       target_model_name))
+        exit(0)
+    instance = model(backbone_config, f1_net, f2_net, f3_net)
+    return instance
+
+
 def create_loss(hypes):
     """
     Create the loss function based on the given loss name.

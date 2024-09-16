@@ -1,4 +1,4 @@
-name: dair_covqm_m2
+name: dair_covqm_base+pointpillar
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -120,12 +120,28 @@ model:
     # freeze
     backbone_fix: false
 
+    f1:
+      # params for lidar branch
+      use_lidar: True
+      pc_params:
+        voxel_size: *voxel_size1
+        lidar_range: *cav_lidar
+        pillar_vfe:
+          use_norm: true
+          with_distance: false
+          use_absolute_xyz: true
+          num_filters: [64]
+        point_pillar_scatter:
+          num_features: 64
+
     f2:
       # second 
       mean_vfe:
         feature_points: 4
       backbone_3d: # []
         num_features_out: 32 # 64/2
+      model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
+      freeze: True
 
     shrink_header:
       use: true

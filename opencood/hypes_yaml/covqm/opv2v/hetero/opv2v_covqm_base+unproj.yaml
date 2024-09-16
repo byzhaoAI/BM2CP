@@ -1,4 +1,4 @@
-name: opv2v_covqm_m3
+name: opv2v_covqm_base+unproj
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
@@ -70,7 +70,6 @@ preprocess:
     cav_lidar_range: *cav_lidar
   cav_lidar_range: *cav_lidar
 
-
 data_augment:
   - NAME: random_world_flip
     ALONG_AXIS_LIST: [ 'x' ]
@@ -115,6 +114,13 @@ model:
     supervise_single: False
     backbone_fix: False
 
+    f2:
+      # second 
+      mean_vfe:
+        feature_points: 4
+      backbone_3d: # []
+        num_features_out: 32 # 64/2
+      model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/net_epoch30.pth'
 
     f3:
       img_unproj:

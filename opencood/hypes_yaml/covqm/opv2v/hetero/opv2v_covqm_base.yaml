@@ -1,4 +1,4 @@
-name: opv2v_covqm_m2
+name: opv2v_covqm_base
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 

@@ -26,14 +26,14 @@ class PointPillarCoVQM(nn.Module):
         self.supervise_single = args['supervise_single'] if 'supervise_single' in args else False
 
         self.agent_len = 0
-        self.f1, self.f1_fix = None, False
+        self.f1 = None
         if f1_net is not None:
             self.f1 = f1_net
         if 'f1' in args:
             if self.f1 is not None:
-                if 'fix' in args['f1'] and args['f1']['fix']:
-                    self.f1_fix = True
-                    self.fix_backbone(self.f1) 
+                if 'freeze' in args['f1'] and args['f1']['freeze']:
+                    self.freeze_backbone(self.f1) 
+                    print('f1 net freezed.')
             else:
                 self.f1 = CoVQMF1(args['f1'])
             self.agent_len += 1
@@ -43,14 +43,14 @@ class PointPillarCoVQM(nn.Module):
             self.f1 = None
         
 
-        self.f2, self.f2_fix = None, False
+        self.f2 = None
         if f2_net is not None:
             self.f2 = f2_net
         if 'f2' in args:
             if self.f2 is not None:
-                if 'fix' in args['f2'] and args['f2']['fix']:
-                    self.f2_fix = True
-                    self.fix_backbone(self.f2)
+                if 'freeze' in args['f2'] and args['f2']['freeze']:
+                    self.freeze_backbone(self.f2)
+                    print('f2 net freezed.')
             else:
                 self.f2 = CoVQMF2(args['f2'])
             self.agent_len += 1
@@ -60,14 +60,14 @@ class PointPillarCoVQM(nn.Module):
             self.f2 = None
         self.f2_proj = nn.Conv2d(args['fusion']['num_filters'][0], args['fusion']['num_filters'][0], kernel_size=3, stride=1, padding=1)
 
-        self.f3, self.f3_fix = None, False
+        self.f3 = None
         if f3_net is not None:
             self.f3 = f3_net
         if 'f3' in args:
             if self.f3 is not None:
-                if 'fix' in args['f3'] and args['f3']['fix']:
-                    self.f3_fix = True
-                    self.fix_backbone(self.f3)
+                if 'freeze' in args['f3'] and args['f3']['freeze']:
+                    self.freeze_backbone(self.f3)
+                    print('f3 net freezed.')
             else:
                 self.f3 = CoVQMF3(args['f3'])
             self.agent_len += 1
@@ -91,15 +91,17 @@ class PointPillarCoVQM(nn.Module):
         self.reg_head = nn.Conv2d(args['outC'], 7 * args['anchor_number'], kernel_size=1)
         self.dir_head = nn.Conv2d(args['outC'], args['dir_args']['num_bins'] * args['anchor_number'], kernel_size=1) # BIN_NUM = 2
 
-    def fix_backbone(self, net):
+    def freeze_backbone(self, net):
         for p in net.parameters():
             p.requires_grad = False
 
-    def regroup(self, x, record_len, select_idx):
+    def regroup(self, x, record_len, select_idx, unsqueeze=False):
         if select_idx == 1:
             x = self.f2_proj(x)
         elif select_idx == 2:
             x = self.f3_proj(x)
+        if unsqueeze:
+            x = x.unsqueeze(1)
         split_x = torch.tensor_split(x, torch.cumsum(record_len, dim=0)[:-1].cpu())
 
         select_x, select_ego = [], []
@@ -115,7 +117,8 @@ class PointPillarCoVQM(nn.Module):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
         rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
-        
+        m_len = 1
+
         features = []
         ego_features = []
         modality_len = []
@@ -136,7 +139,7 @@ class PointPillarCoVQM(nn.Module):
             else:
                 f, m_len = f1_output.unsqueeze(1), 1
             
-            features, ego_features = self.regroup(f, record_len, select_idx=0)
+            features, ego_features = self.regroup(f, record_len, select_idx=len(modality_len))
             if self.agent_len <= 1:
                 features = f
             modality_len.append(m_len)
@@ -151,16 +154,16 @@ class PointPillarCoVQM(nn.Module):
                 'batch_size': torch.sum(record_len).cpu().numpy(),
                 'record_len': record_len
             }
-            f = self.f2(batch_dict).unsqueeze(1)
+            f = self.f2(batch_dict)
             
             if self.agent_len <= 1:
-                features = f
+                features = f.unsqueeze(1)
             else:
-                select_x, select_ego = self.regroup(f, record_len, select_idx=1)
+                select_x, select_ego = self.regroup(f, record_len, select_idx=len(modality_len), unsqueeze=True)
                 if features:
                     for i in range(len(record_len)):
-                        if select_x[i]:
-                            features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len+1,1,1,1)], dim=0)
+                        if select_x[i] != []:
+                            features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len,1,1,1)], dim=0)
                 else:
                     features = select_x
             
@@ -175,16 +178,16 @@ class PointPillarCoVQM(nn.Module):
         # process agent 3 data to get feature f3
         # (b,c,h,w)
         if self.f3 is not None:
-            f = self.f3(data_dict['image_inputs']).unsqueeze(1)
+            f = self.f3(data_dict['image_inputs'])
             
             if self.agent_len <= 1:
-                features = f
+                features = f.unsqueeze(1)
             else:
-                select_x, select_ego = self.regroup(f, record_len, select_idx=2)
+                select_x, select_ego = self.regroup(f, record_len, select_idx=len(modality_len), unsqueeze=True)
                 if features:
                     for i in range(len(record_len)):
-                        if select_x[i]:
-                            features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len+1,1,1,1)], dim=0)
+                        if select_x[i] != []:
+                            features[i] = torch.cat([features[i], select_x[i].repeat(1,m_len,1,1,1)], dim=0)
                 else:
                     features = select_x
             
@@ -203,11 +206,11 @@ class PointPillarCoVQM(nn.Module):
         if training and (self.agent_len > 1 or (self.f1 is not None and m_len > 1)):
             for idx in range(len(record_len)):
                 ego_feats = ego_features[idx]
-                for ego_idx in range(ego_feats.shape[0]):
+                for ego_idx in range(ego_feats.shape[1]):
                     bfp_loss = bfp_loss + match_loss(
                         pool_feat(
-                            ego_feats[ego_idx], 
-                            ego_feats[(ego_idx+1)%len(ego_feats.shape[0])], 
+                            ego_feats[:, ego_idx], 
+                            ego_feats[:, (ego_idx+1) % ego_feats.shape[1]], 
                             pool_dim='hw'), 
                         'mfro')
 

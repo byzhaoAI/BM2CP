@@ -28,6 +28,11 @@ class PointPillarLoss2(nn.Module):
         else:
             self.svd = None
 
+        if 'bfp' in args:
+            self.bfp = args['bfp']
+        else:
+            self.bfp = None
+
         if 'dir' in args:
             self.dir = args['dir']
         else:
@@ -146,6 +151,11 @@ class PointPillarLoss2(nn.Module):
             svd_wg = 1 if self.svd is None else self.svd['weight']
             total_loss += output_dict['svd_loss'] * svd_wg
             self.loss_dict.update({'svd_loss': output_dict['svd_loss'].item()})
+
+        if 'bfp_loss' in output_dict:
+            bfp_wg = 1 if self.bfp is None else self.bfp['weight']
+            total_loss += output_dict['bfp_loss'] * bfp_wg
+            self.loss_dict.update({'bfp_loss': output_dict['bfp_loss'].item()})
         
         return total_loss
 

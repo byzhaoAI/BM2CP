@@ -20,6 +20,7 @@ import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils
 from opencood.data_utils.datasets import build_dataset
 
+from thop import profile
 
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -27,6 +28,8 @@ def train_parser():
                         help='data generation yaml file needed ')
     parser.add_argument('--model_dir', default='',
                         help='Continued training path')
+    parser.add_argument('--from_init', default=False,
+                        help='Continued training or init trianing')
     parser.add_argument('--fusion_method', '-f', default="intermediate",
                         help='passed to inference.')
     opt = parser.parse_args()
@@ -43,21 +46,21 @@ def main():
 
     train_loader = DataLoader(opencood_train_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=8,
+                            num_workers=16,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
                             drop_last=True,
-                            prefetch_factor=8
+                            prefetch_factor=16
                             )
     val_loader = DataLoader(opencood_validate_dataset,
                             batch_size=hypes['train_params']['batch_size'],
-                            num_workers=8,
+                            num_workers=16,
                             collate_fn=opencood_train_dataset.collate_batch_train,
                             shuffle=True,
                             pin_memory=True,
                             drop_last=True,
-                            prefetch_factor=8
+                            prefetch_factor=16
                             )
 
     print('Creating Model')
@@ -85,6 +88,9 @@ def main():
     if opt.model_dir:
         saved_path = opt.model_dir
         init_epoch, model = train_utils.load_saved_model(saved_path, model)
+        if opt.from_init:
+            init_epoch = 0
+            print('open init epoch from 0.')
         lowest_val_epoch = init_epoch ###
         scheduler = train_utils.setup_lr_schedular(hypes, optimizer, init_epoch=init_epoch, n_iter_per_epoch=len(train_loader))
     else:
@@ -127,7 +133,7 @@ def main():
             model.zero_grad()
             optimizer.zero_grad()
 
-            if 'scope' in hypes['name'] or 'how2comm' in hypes['name'] or 'fecp' in hypes['name']:
+            if 'scope' in hypes['name'] or 'how2comm' in hypes['name'] or 'syncnet' in hypes['name']:
                 _batch_data = batch_data[0]
                 batch_data = train_utils.to_device(batch_data, device)
                 _batch_data = train_utils.to_device(_batch_data, device)
