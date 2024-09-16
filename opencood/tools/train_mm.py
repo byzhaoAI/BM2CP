@@ -16,6 +16,7 @@ sys.path.append(root_path)
 
 import numpy as np
 import torch
+import copy
 from torch.utils.data import DataLoader, Subset
 from tensorboardX import SummaryWriter
 
@@ -67,7 +68,22 @@ def main():
                             )
 
     print('Creating Model')
-    model = train_utils.create_model(hypes)
+    # model = train_utils.create_model(hypes)
+    f1_net, f2_net, f3_net = None, None, None
+    if 'f1' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f1']:
+        f1_net = train_utils.create_model(hypes)
+        _, f1_net = train_utils.load_saved_model(hypes['model']['args']['f1']['model_path'], f1_net)
+        f1_net = f1_net.f1
+    if 'f2' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f2']:
+        f2_net = train_utils.create_model(hypes)
+        _, f2_net = train_utils.load_saved_model(hypes['model']['args']['f2']['model_path'], f2_net)
+        f2_net = f2_net.f2
+    if 'f3' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f3']:
+        f3_net = train_utils.create_model(hypes)
+        _, f3_net = train_utils.load_saved_model(hypes['model']['args']['f3']['model_path'], f3_net)
+        f3_net = f3_net.f3
+    
+    model = train_utils.create_covqm_model(hypes, f1_net, f2_net, f3_net)
     total = sum([param.nelement() for param in model.parameters()])
     print("Number of parameter: %d" % (total))
     # print(model)
