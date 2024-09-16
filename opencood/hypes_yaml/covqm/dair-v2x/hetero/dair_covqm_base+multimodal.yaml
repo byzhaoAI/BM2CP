@@ -1,4 +1,4 @@
-name: dair_heal_base+pointpillar
+name: dair_covqm_base+multimodal
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -6,8 +6,8 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 1 #4 #6
-  epoches: 40
+  batch_size: &batch_size 2 #4 #6
+  epoches: 30
   eval_freq: 2
   save_freq: 1
   max_cav: &max_cav 2
@@ -109,7 +109,7 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_heal_hetero
+  core_method: point_pillar_covqm
   
   args:
     device: *device
@@ -118,9 +118,18 @@ model:
     proj_first: *proj_first
     supervise_single: False
     # freeze
-    backbone_fix: True
+    backbone_fix: false
 
     f1:
+      # params for camera branch
+      use_camera: True
+      device: *device
+      img_params:
+        grid_conf: *grid_conf
+        data_aug_conf: *data_aug_conf
+        img_downsample: 8
+        bev_dim: 64
+
       # params for lidar branch
       use_lidar: True
       pc_params:
@@ -133,7 +142,10 @@ model:
           num_filters: [64]
         point_pillar_scatter:
           num_features: 64
-      freeze: False
+    
+      # params for modality fusion
+      modality_fusion:
+        num_modality: 2
 
     f2:
       # second 
@@ -142,6 +154,7 @@ model:
       backbone_3d: # []
         num_features_out: 32 # 64/2
       model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
+      freeze: True
 
     shrink_header:
       use: true
@@ -151,9 +164,7 @@ model:
       stride: [ 2 ]
       padding: [ 1 ]
     
-    compression: # compression rate
-      input_dim: 64
-      compress_ratio: 1
+    compression: 0 # compression rate
 
     # params for collaborative fusion: where2comm
     fusion:
@@ -212,5 +223,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [15, 30]
+  step_size: [10, 20]
 
