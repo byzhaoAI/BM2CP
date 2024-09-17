@@ -1,0 +1,213 @@
+# -*- coding: utf-8 -*-
+# Author: Yifan Lu <yifan_lu@sjtu.edu.cn>
+# License: TDG-Attribution-NonCommercial-NoDistrib
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange
+
+from opencood.models.vqm_modules.base_bev_backbone_resnet import ResNetBEVBackbone
+from opencood.models.vqm_modules.resblock import ResNetModified, Bottleneck, BasicBlock
+
+
+def regroup(x, record_len):
+    cum_sum_len = torch.cumsum(record_len, dim=0)
+    split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
+    return split_x
+
+
+
+def warp_affine_simple(src, M, dsize,
+        mode='bilinear',
+        padding_mode='zeros',
+        align_corners=False):
+
+    B, C, H, W = src.size()
+    grid = F.affine_grid(M,
+                         [B, C, dsize[0], dsize[1]],
+                         align_corners=align_corners).to(src)
+    return F.grid_sample(src, grid, align_corners=align_corners)
+
+
+
+def weighted_fuse(x, score, record_len, affine_matrix, align_corners):
+    """
+    Parameters
+    ----------
+    x : torch.Tensor
+        input data, (sum(n_cav), C, H, W)
+    
+    score : torch.Tensor
+        score, (sum(n_cav), 1, H, W)
+        
+    record_len : list
+        shape: (B)
+        
+    affine_matrix : torch.Tensor
+        normalized affine matrix from 'normalize_pairwise_tfm'
+        shape: (B, L, L, 2, 3) 
+    """
+
+    _, C, H, W = x.shape
+    B, L = affine_matrix.shape[:2]
+    split_x = regroup(x, record_len)
+    # score = torch.sum(score, dim=1, keepdim=True)
+    split_score = regroup(score, record_len)
+    batch_node_features = split_x
+    out = []
+    # iterate each batch
+    for b in range(B):
+        N = record_len[b]
+        score = split_score[b]
+        t_matrix = affine_matrix[b][:N, :N, :, :]
+        i = 0 # ego
+        feature_in_ego = warp_affine_simple(batch_node_features[b],
+                                        t_matrix[i, :, :, :],
+                                        (H, W), align_corners=align_corners)
+        scores_in_ego = warp_affine_simple(split_score[b],
+                                           t_matrix[i, :, :, :],
+                                           (H, W), align_corners=align_corners)
+        scores_in_ego.masked_fill_(scores_in_ego == 0, -float('inf'))
+        scores_in_ego = torch.softmax(scores_in_ego, dim=0)
+        scores_in_ego = torch.where(torch.isnan(scores_in_ego), 
+                                    torch.zeros_like(scores_in_ego, device=scores_in_ego.device), 
+                                    scores_in_ego)
+
+        out.append(torch.sum(feature_in_ego * scores_in_ego, dim=0))
+    out = torch.stack(out)
+    
+    return out
+
+
+class PyramidFusion(ResNetBEVBackbone):
+    def __init__(self, model_cfg, input_channels=64):
+        """
+        Do not downsample in the first layer.
+        """
+        super().__init__(model_cfg, input_channels)
+        if model_cfg["resnext"]:
+            Bottleneck.expansion = 1
+            self.resnet = ResNetModified(Bottleneck, 
+                                        self.model_cfg['layer_nums'],
+                                        self.model_cfg['layer_strides'],
+                                        self.model_cfg['num_filters'],
+                                        inplanes = model_cfg.get('inplanes', 64),
+                                        groups=32,
+                                        width_per_group=4)
+        self.align_corners = model_cfg.get('align_corners', False)
+        print('Align corners: ', self.align_corners)
+    
+    def forward_collab(self, spatial_features, score, record_len, affine_matrix, agent_modality_list = None, cam_crop_info = None):
+        """
+        spatial_features : torch.tensor
+            [sum(record_len), C, H, W]
+
+        record_len : list
+            cav num in each sample
+
+        affine_matrix : torch.tensor
+            [B, L, L, 2, 3]
+
+        agent_modality_list : list
+            len = sum(record_len), modality of each cav
+
+        cam_crop_info : dict
+            {'m2':
+                {
+                    'crop_ratio_W_m2': 0.5,
+                    'crop_ratio_H_m2': 0.5,
+                }
+            }
+        """
+        sum_len, m_len, x_C, x_H, x_W = spatial_features.shape  #
+        spatial_features = rearrange(spatial_features, 'b m c h w -> (b m) c h w')  #
+
+        feature_list = self.get_multiscale_feature(spatial_features)
+        fused_feature_list = []
+        for i in range(self.num_levels):
+            feature = rearrange(feature_list[i], '(b m) c h w -> b m c h w', b=sum_len, m=m_len)    #
+            
+            if feature.shape[-1] != score.shape[-1]:
+                level_score = F.interpolate(score, size=feature.shape[-2:], mode='bilinear', align_corners=False)
+            else:
+                level_score = score
+            level_score = rearrange(level_score, '(b m) c h w -> b m c h w', b=sum_len, m=m_len)
+            
+            fused_feature = self.weighted_fuse(feature, level_score, record_len, affine_matrix, self.align_corners)   #
+            # (B,m_len,C,H,W) -> (B*m_len,C,H,W)    #
+            fused_feature = rearrange(fused_feature, 'b m c h w -> (b m) c h w')    #
+            fused_feature_list.append(fused_feature)    #
+            # fused_feature_list.append(weighted_fuse(feature_list[i], score, record_len, affine_matrix, self.align_corners))
+
+        fused_feature = self.decode_multiscale_feature(fused_feature_list)
+        
+        return fused_feature, [] 
+
+    def weighted_fuse(self, x, score, record_len, affine_matrix, align_corners):
+        """
+        Parameters
+        ----------
+        x : torch.Tensor
+            input data, (sum(n_cav), m_len, C, H, W)
+        
+        score : torch.Tensor
+            score, (sum(n_cav), m_len, 1, H, W)
+            
+        record_len : list
+            shape: (B)
+            
+        affine_matrix : torch.Tensor
+            normalized affine matrix from 'normalize_pairwise_tfm'
+            shape: (B, L, L, 2, 3) 
+        """
+
+        _, m_len, C, H, W = x.shape
+        B, L = affine_matrix.shape[:2]
+        split_x = regroup(x, record_len)
+        # score = torch.sum(score, dim=1, keepdim=True)
+        split_score = regroup(score, record_len)
+        batch_node_features = split_x
+
+        out = []
+        # iterate each batch
+        for b in range(B):
+            N = record_len[b]
+            score = split_score[b]
+            t_matrix = affine_matrix[b][:N, :N, :, :]
+            i = 0 # ego
+            feature_in_ego = self.warp_affine_simple(batch_node_features[b], t_matrix[i, :, :, :], (H, W), align_corners=align_corners)
+            scores_in_ego = self.warp_affine_simple(split_score[b], t_matrix[i, :, :, :], (H, W), align_corners=align_corners)
+
+            # scores_in_ego.masked_fill_(scores_in_ego == 0, -float('inf'))
+            # scores_in_ego = torch.softmax(scores_in_ego, dim=0)
+            # scores_in_ego = torch.where(torch.isnan(scores_in_ego), 
+            #                             torch.zeros_like(scores_in_ego, device=scores_in_ego.device), 
+            #                             scores_in_ego)
+            scores_in_ego = torch.softmax(scores_in_ego, dim=0)
+
+            # feature_in_ego: (L,m_len,C,H,W); scores_in_ego: (L,m_len,1,H,W) -> (m_len,C,H,W)
+            out.append(torch.sum(feature_in_ego * scores_in_ego, dim=0))
+
+        # {(m_len,C,H,W)} -> (B,m_len,C,H,W)
+        out = torch.stack(out)
+        
+        return out
+
+    def warp_affine_simple(self, src, M, dsize,
+        mode='bilinear',
+        padding_mode='zeros',
+        align_corners=False):
+
+        # M: (L,2,3)
+        # src: (L,m_len,C,H,W)
+
+        L, m_len, C, H, W = src.size()
+
+        src = rearrange(src, 'l m c h w -> (l m) c h w')
+        M = rearrange(M.unsqueeze(1).repeat(1,m_len,1,1), 'l m x y -> (l m) x y')
+        grid = F.affine_grid(M, [L*m_len, C, dsize[0], dsize[1]], align_corners=align_corners).to(src)
+        warpped_src = F.grid_sample(src, grid, align_corners=align_corners)
+        warpped_src = rearrange(warpped_src, '(l m) c h w -> l m c h w', l=L, m=m_len)
+        return warpped_src

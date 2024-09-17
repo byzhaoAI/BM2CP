@@ -9,6 +9,7 @@ from einops import rearrange
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
 from opencood.models.vqm_modules.pyramid_fuse import PyramidFusion
+from opencood.models.vqm_modules.weight_pyramid_fuse import PyramidFusion as SPyramidFusion
 
 from opencood.models.vqm_modules.f1 import CoVQMF1
 from opencood.models.vqm_modules.f2 import CoVQMF2
@@ -24,6 +25,7 @@ class PointPillarCoVQM(nn.Module):
         self.max_cav = args['max_cav']
         self.cav_range = args['lidar_range']
         self.supervise_single = args['supervise_single'] if 'supervise_single' in args else False
+        self.unified_score = args['unified_score'] if 'unified_score' in args else False
         self.bfp = args['bfp'] if 'bfp' in args else True
         if not self.bfp:
             print('No BFP is used.')
@@ -87,7 +89,10 @@ class PointPillarCoVQM(nn.Module):
             self.shrink_conv = DownsampleConv(args['shrink_header'])
             print("Number of parameter shrink_conv: %d" % (sum([param.nelement() for param in self.shrink_conv.parameters()])))
         
-        self.pyramid_backbone = PyramidFusion(args['fusion'])
+        if self.unified_score:
+            self.pyramid_backbone = SPyramidFusion(args['fusion'])
+        else:
+            self.pyramid_backbone = PyramidFusion(args['fusion'])
         print("Number of parameter pyramid_backbone: %d" % (sum([param.nelement() for param in self.pyramid_backbone.parameters()])))
 
         self.cls_head = nn.Conv2d(args['outC'], args['anchor_number'], kernel_size=1)
@@ -213,10 +218,13 @@ class PointPillarCoVQM(nn.Module):
                 for ego_idx in range(ego_feats.shape[1]):
                     bfp_loss = bfp_loss + match_loss(
                         pool_feat(
-                            ego_feats[:, ego_idx], 
-                            ego_feats[:, (ego_idx+1) % ego_feats.shape[1]], 
-                            pool_dim='hw'), 
-                        'mfro')
+                            f1=ego_feats[:, ego_idx], 
+                            f2=ego_feats[:, (ego_idx+1) % ego_feats.shape[1]], 
+                            pool_dim='hw',
+                            normalize_feat=True
+                        ), 
+                        loss_type='mfro'
+                    )
 
         """For feature transformation"""
         self.H = (self.cav_range[4] - self.cav_range[1])
@@ -226,13 +234,27 @@ class PointPillarCoVQM(nn.Module):
 
         # heter_feature_2d is downsampled 2x
         # add croping information to collaboration module
-        fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
-                                                features,
-                                                record_len, 
-                                                affine_matrix, 
-                                                None, 
-                                                None
-                                            )
+        if self.unified_score:
+            fused_feature_single = self.pyramid_backbone.resnet._forward_impl(
+                rearrange(features, 'b m c h w -> (b m) c h w'), 
+                return_interm=False
+            )
+            fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+                                                    features,
+                                                    self.cls_head(fused_feature_single).sigmoid().max(dim=1)[0].unsqueeze(1),
+                                                    record_len, 
+                                                    affine_matrix, 
+                                                    None, 
+                                                    None
+                                                )
+        else:    
+            fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+                                                    features,
+                                                    record_len, 
+                                                    affine_matrix, 
+                                                    None, 
+                                                    None
+                                                )
 
         if self.shrink_flag:
             fused_feature = self.shrink_conv(fused_feature)
