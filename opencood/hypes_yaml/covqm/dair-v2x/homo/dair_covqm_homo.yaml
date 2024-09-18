@@ -117,6 +117,7 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
+    unified_score: true
     # freeze
     backbone_fix: false
 
