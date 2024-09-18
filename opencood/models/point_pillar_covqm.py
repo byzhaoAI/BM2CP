@@ -274,7 +274,7 @@ class PointPillarCoVQM(nn.Module):
         if self.f1 is not None:
             output_dict.update({'modality_num': m_len})
 
-            if m_len > 1:
+            if training and m_len > 1:
                 # (b*m_len,c,h,w) -> (b,m_len,c,h,w)
                 cls_preds = rearrange(cls_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
                 reg_preds = rearrange(reg_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
