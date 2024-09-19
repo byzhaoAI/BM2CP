@@ -14,6 +14,7 @@ from opencood.data_utils.post_processor.voxel_postprocessor import VoxelPostproc
 class PointPillarLoss2(nn.Module):
     def __init__(self, args):
         super(PointPillarLoss2, self).__init__()
+        self.device = args['device']
         self.pos_cls_weight = args['pos_cls_weight']
 
         self.cls = args['cls']
@@ -77,7 +78,16 @@ class PointPillarLoss2(nn.Module):
         # if f'dm{suffix}' in output_dict:
         #     output_dict[f'dir_preds{suffix}'] = output_dict[f'dm{suffix}']
 
-        total_loss = 0
+        # total_loss = 0
+        total_loss = torch.tensor(0.0, requires_grad=True).to(self.device)
+
+        if f'cls_preds{suffix}' not in output_dict or f'reg_preds{suffix}' not in output_dict:
+            self.loss_dict.update({
+                'total_loss': total_loss.item(),
+                'reg_loss': 0,
+                'cls_loss': 0
+            })
+            return total_loss
 
         # cls loss
         cls_preds = output_dict[f'cls_preds{suffix}'].permute(0, 2, 3, 1).contiguous() \

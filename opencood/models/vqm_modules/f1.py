@@ -128,6 +128,59 @@ class MultiModalFusion(nn.Module):
             auto_enc_loss = self.rec_loss(con_feat, feat_rec)
             svd_loss = self.abs_loss(feat_mid.flatten(2), rec_feat_mid)
 
+        con_feat = rearrange(con_feat, '(b m) c h w -> b m c h w', b=B, m=M)
+        x = con_feat
+        for i in range(self.num_layers):
+            Adj = self.gc(x)
+            residuals = self.gconv1[i](x, Adj) + self.gconv2[i](x, Adj.transpose(1,2))
+            x = x + residuals
+            x = x.view(B*M, C, H, W)
+            x = self.norm[i](x)
+            x = x.view(B, M, C, H, W)
+
+        x = x.view(B*M, C, H, W)
+        con_feat = con_feat.view(B*M, C, H, W)
+        
+        con_feat = con_feat + self.skipE(x)
+        con_feat = F.relu(con_feat)
+        con_feat = self.conv(con_feat)
+        con_feat = con_feat.view(B, M, C, H, W)
+
+        if training:
+            return con_feat, auto_enc_loss, svd_loss
+        
+        # count principal components in channel dimension
+        feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
+        counts = torch.sum(feat_v > self.threshold, dim=-1)
+        best_indices = torch.argmax(counts, dim=-1)
+        fused_feat = []
+        for idx, index in enumerate(best_indices):
+            fused_feat.append(con_feat[idx,index,:,:,:])
+        fused_feat = torch.stack(fused_feat, dim=0)
+        return fused_feat.unsqueeze(1), auto_enc_loss, svd_loss
+
+    def _forward_add(self, feats, training):
+        # 模态融合 img, pc, radar: B*C*Y*X
+
+        con_feat = torch.stack(feats, dim=1)
+        B, M, C, H, W = con_feat.shape
+        con_feat = rearrange(con_feat, 'b m c h w -> (b m) c h w')
+
+        feat_mid, feat_rec = self.autoencoder(con_feat)
+        # b*c*c, b*c, b*n*n
+        feat_v = self.v_func(feat_mid).flatten(1)
+        
+        auto_enc_loss, svd_loss = 0, 0
+        if training:
+            feat_s, feat_d = self.s_func(feat_mid).squeeze(1), self.d_func(feat_mid).squeeze(1)
+            # construct diag matrix
+            diag_v = torch.zeros((B*M, feat_s.shape[1], feat_d.shape[1])).to(con_feat.device)
+            diag_v[:, :min(feat_s.shape[1], feat_d.shape[1]), :min(feat_s.shape[1], feat_d.shape[1])] = torch.diag_embed(feat_v)
+            # recover matrix
+            rec_feat_mid = torch.bmm(feat_s, torch.bmm(diag_v, feat_d))
+            auto_enc_loss = self.rec_loss(con_feat, feat_rec)
+            svd_loss = self.abs_loss(feat_mid.flatten(2), rec_feat_mid)
+
         # count principal components in channel dimension
         feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
         counts = torch.sum(feat_v > self.threshold, dim=-1)
@@ -250,11 +303,11 @@ class CoVQMF1(nn.Module):
             x, rec_loss, svd_loss = self.fusion(modal_features, training=training)
 
             # b, m, c, h, w
-            if training:
-                modal_features = [x] + modal_features
-                x = torch.stack(modal_features, dim=1)
-            else:
-                x = x.unsqueeze(1)
+            # if training:
+            #     modal_features = [x] + modal_features
+            #     x = torch.stack(modal_features, dim=1)
+            # else:
+            #     x = x.unsqueeze(1)
 
             return x, m_len, rec_loss, svd_loss
 

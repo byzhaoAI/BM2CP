@@ -271,36 +271,43 @@ class PointPillarCoVQM(nn.Module):
             'bfp_loss': bfp_loss,
         })
 
-        if self.f1 is not None:
+        if self.f1 is not None and training and m_len > 1:
             output_dict.update({'modality_num': m_len})
 
-            if training and m_len > 1:
-                # (b*m_len,c,h,w) -> (b,m_len,c,h,w)
-                cls_preds = rearrange(cls_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
-                reg_preds = rearrange(reg_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
-                dir_preds = rearrange(dir_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
+            # (b*m_len,c,h,w) -> (b,m_len,c,h,w)
+            cls_preds = rearrange(cls_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
+            reg_preds = rearrange(reg_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
+            dir_preds = rearrange(dir_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
 
+            # output_dict.update({
+            #     'cls_preds': cls_preds[:,0],
+            #     'reg_preds': reg_preds[:,0],
+            #     'dir_preds': dir_preds[:,0],
+            #     'psm': cls_preds[:,0],
+            #     'rm': reg_preds[:,0],
+            # })
+            
+            # output_dict.update({'occ_single_list': 
+            #                     occ_outputs})
+
+            # if training:
+            #     for x_idx in range(m_len):
+            #         output_dict.update({
+            #             'cls_preds_{}'.format(x_idx): cls_preds[:,x_idx],
+            #             'reg_preds_{}'.format(x_idx): reg_preds[:,x_idx],
+            #             'dir_preds_{}'.format(x_idx): dir_preds[:,x_idx],
+            #             # 'occ_single_list_{}'.format(x_idx): eval(f"split_occ_outputs{x_idx}"),
+            #         })
+            
+            for x_idx in range(m_len):
                 output_dict.update({
-                    'cls_preds': cls_preds[:,-1],
-                    'reg_preds': reg_preds[:,-1],
-                    'dir_preds': dir_preds[:,-1],
-                    'psm': cls_preds[:,-1],
-                    'rm': reg_preds[:,-1],
+                    'cls_preds_{}'.format(x_idx): cls_preds[:,x_idx],
+                    'reg_preds_{}'.format(x_idx): reg_preds[:,x_idx],
+                    'dir_preds_{}'.format(x_idx): dir_preds[:,x_idx],
+                    # 'occ_single_list_{}'.format(x_idx): eval(f"split_occ_outputs{x_idx}"),
                 })
-                
-                # output_dict.update({'occ_single_list': 
-                #                     occ_outputs})
 
-                if training:
-                    for x_idx in range(m_len):
-                        output_dict.update({
-                            'cls_preds_{}'.format(x_idx): cls_preds[:,x_idx],
-                            'reg_preds_{}'.format(x_idx): reg_preds[:,x_idx],
-                            'dir_preds_{}'.format(x_idx): dir_preds[:,x_idx],
-                            # 'occ_single_list_{}'.format(x_idx): eval(f"split_occ_outputs{x_idx}"),
-                        })
-
-                return output_dict
+            return output_dict
 
         output_dict.update({
             'cls_preds': cls_preds,

@@ -113,7 +113,7 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
-    # unified_score: true
+    unified_score: true
     backbone_fix: False
 
     f1:
@@ -172,6 +172,7 @@ model:
 loss:
   core_method: point_pillar_pyramid_loss
   args:
+    device: *device
     pos_cls_weight: 2.0
     cls:
       type: 'SigmoidFocalLoss'
