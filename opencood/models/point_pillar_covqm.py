@@ -142,11 +142,7 @@ class PointPillarCoVQM(nn.Module):
                 'batch_size': torch.sum(record_len).cpu().numpy(),
                 'record_len': record_len
             }
-            f1_output = self.f1(batch_dict, training=training)
-            if isinstance(f1_output, tuple):
-                f, m_len, rec_loss, svd_loss = f1_output
-            else:
-                f, m_len = f1_output.unsqueeze(1), 1
+            f, m_len, rec_loss, svd_loss = self.f1(batch_dict, mode=mode, training=training)
             
             features, ego_features = self.regroup(f, record_len, select_idx=len(modality_len))
             if self.agent_len <= 1:
@@ -212,7 +208,8 @@ class PointPillarCoVQM(nn.Module):
             features = torch.cat(features, dim=0)
 
         # back forward projection loss
-        if self.bfp and training and (self.agent_len > 1 or (self.f1 is not None and m_len > 1)):
+        # if self.bfp and training and (self.agent_len > 1 or (self.f1 is not None and m_len > 1)):
+        if self.bfp and training and self.agent_len > 1:
             for idx in range(len(record_len)):
                 ego_feats = ego_features[idx]
                 for ego_idx in range(ego_feats.shape[1]):
@@ -275,29 +272,9 @@ class PointPillarCoVQM(nn.Module):
             output_dict.update({'modality_num': m_len})
 
             # (b*m_len,c,h,w) -> (b,m_len,c,h,w)
-            cls_preds = rearrange(cls_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
-            reg_preds = rearrange(reg_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
-            dir_preds = rearrange(dir_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
-
-            # output_dict.update({
-            #     'cls_preds': cls_preds[:,0],
-            #     'reg_preds': reg_preds[:,0],
-            #     'dir_preds': dir_preds[:,0],
-            #     'psm': cls_preds[:,0],
-            #     'rm': reg_preds[:,0],
-            # })
-            
-            # output_dict.update({'occ_single_list': 
-            #                     occ_outputs})
-
-            # if training:
-            #     for x_idx in range(m_len):
-            #         output_dict.update({
-            #             'cls_preds_{}'.format(x_idx): cls_preds[:,x_idx],
-            #             'reg_preds_{}'.format(x_idx): reg_preds[:,x_idx],
-            #             'dir_preds_{}'.format(x_idx): dir_preds[:,x_idx],
-            #             # 'occ_single_list_{}'.format(x_idx): eval(f"split_occ_outputs{x_idx}"),
-            #         })
+            cls_preds = rearrange(cls_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
+            reg_preds = rearrange(reg_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
+            dir_preds = rearrange(dir_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
             
             for x_idx in range(m_len):
                 output_dict.update({
@@ -307,14 +284,22 @@ class PointPillarCoVQM(nn.Module):
                     # 'occ_single_list_{}'.format(x_idx): eval(f"split_occ_outputs{x_idx}"),
                 })
 
+            output_dict.update({
+                'cls_preds': cls_preds[:,-1],
+                'reg_preds': reg_preds[:,-1],
+                'dir_preds': dir_preds[:,-1],
+                # 'psm': cls_preds[:,-1],
+                # 'rm': reg_preds[:,-1],
+            })
+
             return output_dict
 
         output_dict.update({
             'cls_preds': cls_preds,
             'reg_preds': reg_preds,
             'dir_preds': dir_preds,
-            'psm': cls_preds,
-            'rm': reg_preds,
+            # 'psm': cls_preds,
+            # 'rm': reg_preds,
         })
 
         return output_dict

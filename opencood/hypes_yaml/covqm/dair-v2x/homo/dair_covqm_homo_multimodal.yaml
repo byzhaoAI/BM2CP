@@ -117,7 +117,7 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
-    unified_score: true
+    unified_score: True
     backbone_fix: false
 
     f1:

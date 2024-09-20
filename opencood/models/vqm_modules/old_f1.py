@@ -51,7 +51,7 @@ def normalize_pairwise_tfm(pairwise_t_matrix, H, W, discrete_ratio, downsample_r
 
 
 class MultiModalFusion(nn.Module):
-    def __init__(self, dim, ratio=0.8, num_layers=3, threshold=0.1):
+    def __init__(self, num_modality, dim, ratio=0.8, num_layers=3, threshold=0.1):
         super().__init__()
         self.dim =  256
         self.threshold = threshold
@@ -87,7 +87,7 @@ class MultiModalFusion(nn.Module):
             nn.AdaptiveAvgPool2d((256, 256)),
         )
 
-        self.gc = GraphConstructor(dim=dim, alpha=3)
+        self.gc = GraphConstructor(nnodes=num_modality, dim=dim, alpha=3)
         self.num_layers = num_layers
         self.gconv1, self.gconv2, self.norm = nn.ModuleList(), nn.ModuleList(), nn.ModuleList()
         for _ in range(num_layers):
@@ -145,6 +145,9 @@ class MultiModalFusion(nn.Module):
         con_feat = F.relu(con_feat)
         con_feat = self.conv(con_feat)
         con_feat = con_feat.view(B, M, C, H, W)
+
+        if training:
+            return con_feat, auto_enc_loss, svd_loss
         
         # count principal components in channel dimension
         feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
@@ -154,7 +157,7 @@ class MultiModalFusion(nn.Module):
         for idx, index in enumerate(best_indices):
             fused_feat.append(con_feat[idx,index,:,:,:])
         fused_feat = torch.stack(fused_feat, dim=0)
-        return fused_feat, auto_enc_loss, svd_loss
+        return fused_feat.unsqueeze(1), auto_enc_loss, svd_loss
 
     def _forward_add(self, feats, training):
         # 模态融合 img, pc, radar: B*C*Y*X
@@ -245,11 +248,14 @@ class CoVQMF1(nn.Module):
             pc_args = args['pc_params']
             self.pillar_vfe = PillarVFE(pc_args['pillar_vfe'], num_point_features=4, voxel_size=pc_args['voxel_size'], point_cloud_range=pc_args['lidar_range'])
             self.scatter = PointPillarScatter(pc_args['point_pillar_scatter'])
-        
-        modal_dim = pc_args['point_pillar_scatter']['num_features'] if self.use_lidar else img_args['bev_dim']
-        self.fusion = MultiModalFusion(modal_dim)
-        # self.camera_proj = nn.Conv2d(modal_dim, modal_dim, kernel_size=3, stride=1, padding=1)
-        # self.lidar_proj = nn.Conv2d(modal_dim, modal_dim, kernel_size=3, stride=1, padding=1)
+
+        if self.use_camera and self.use_lidar:
+            # 双模态融合
+            modality_args = args['modality_fusion']
+            assert img_args['bev_dim'] == pc_args['point_pillar_scatter']['num_features']
+            self.fusion = MultiModalFusion(modality_args['num_modality'], img_args['bev_dim'])
+            self.camera_proj = nn.Conv2d(img_args['bev_dim'], img_args['bev_dim'], kernel_size=3, stride=1, padding=1)
+            self.lidar_proj = nn.Conv2d(img_args['bev_dim'], img_args['bev_dim'], kernel_size=3, stride=1, padding=1)
 
     def minmax_norm(self, data):
         return (data - data.min()) / (data.max() - data.min()) * 2 - 1
@@ -281,23 +287,34 @@ class CoVQMF1(nn.Module):
             #     x = self.minmax_norm(x)
 
         # justify
-        # if self.use_lidar and self.use_camera:
-        modal_features = []
-        m_len = 0
-        
-        # process lidar to get bev
-        if 0 in mode:
-            # modal_features.append(self.lidar_proj(lidar_feature))
-            modal_features.append(lidar_feature)
-            m_len += 1
-        # process image to get bev
-        if 1 in mode:  
-            # modal_features.append(self.camera_proj(x))
-            modal_features.append(x)
-            m_len += 1
-        
-        x, rec_loss, svd_loss = self.fusion(modal_features, training=training)
-        return x.unsqueeze(1), 1, rec_loss, svd_loss
+        if self.use_lidar and self.use_camera:
+            modal_features = []
+            m_len = 0
+            
+            # process lidar to get bev
+            if 0 in mode:
+                modal_features.append(self.lidar_proj(lidar_feature))
+                m_len += 1
+            # process image to get bev
+            if 1 in mode:  
+                modal_features.append(self.camera_proj(x))
+                m_len += 1
+            # x = self.fusion([lidar_feature], self.modality_adapter)
+            x, rec_loss, svd_loss = self.fusion(modal_features, training=training)
+
+            # b, m, c, h, w
+            # if training:
+            #     modal_features = [x] + modal_features
+            #     x = torch.stack(modal_features, dim=1)
+            # else:
+            #     x = x.unsqueeze(1)
+
+            return x, m_len, rec_loss, svd_loss
+
+        if self.use_lidar and not self.use_camera:
+            return lidar_feature
+
+        return x
 
     def create_frustum(self):
         # make grid in image plane

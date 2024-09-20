@@ -45,15 +45,12 @@ class Mixprop(nn.Module):
 
 
 class GraphConstructor(nn.Module):
-    def __init__(self, nnodes, dim, alpha=3, freeze=False):
+    def __init__(self, dim, alpha=3, freeze=False):
         super(GraphConstructor, self).__init__()
-        self.nnodes = nnodes
-
         self.proj_evc1 = nn.Conv2d(dim, dim, 3, 1, 1)
         self.proj_evc2 = nn.Conv2d(dim, dim, 3, 1, 1)
 
         self.alpha = alpha
-        self.adj = 0
 
         if freeze:
             print('freeze adjacent matrix')

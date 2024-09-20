@@ -32,6 +32,8 @@ def train_parser():
                         help='data generation yaml file needed ')
     parser.add_argument('--model_dir', default='',
                         help='Continued training path')
+    parser.add_argument('--random', default=False,
+                        help='Random modality training')
     parser.add_argument('--from_init', default=False,
                         help='Continued training or init trianing')
     parser.add_argument('--fusion_method', '-f', default="intermediate",
@@ -170,17 +172,13 @@ def main():
                 # becomes a list, which containing all data from other cavs
                 # as well
                 batch_data['ego']['epoch'] = epoch
-                if 'vd' in hypes['name']:
-                    if hypes['use_camera']:
-                        if hypes['use_radar']:
-                            mode = np.random.choice(3, 3)
-                        else:
-                            mode = np.random.choice(2, 2)
+
+                if 'vqm' in hypes['name']:
+                    if opt.random:
+                        mode = np.random.choice(2, 2)
+                        output_dict = model(batch_data['ego'], mode, training=True)
                     else:
-                        mode = np.random.choice(1, 1)
-                    output_dict = model(batch_data['ego'], mode)
-                elif 'vqm' in hypes['name']:
-                    output_dict = model(batch_data['ego'], training=True)
+                        output_dict = model(batch_data['ego'], training=True)
                 else:
                     output_dict = model(batch_data['ego'])
                 #print(output_dict.keys())

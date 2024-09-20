@@ -46,6 +46,8 @@ def test_parser():
                              'in npy file')
     parser.add_argument('--eval_epoch', type=int, default=None,
                         help='Set the checkpoint')
+    parser.add_argument('--modality', type=str, default='0,1',
+                        help='Set the checkpoint')
     parser.add_argument('--eval_best_epoch', type=bool, default=False,
                         help='Set the checkpoint')
     parser.add_argument('--comm_thre', type=float, default=None,
@@ -156,7 +158,8 @@ def main():
                 pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_early_fusion(batch_data, model, opencood_dataset)
             elif opt.fusion_method == 'intermediate':
                 if 'vqm' in hypes['name']:
-                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset, inf=False)
+                    mode = [int(ele) for ele in opt.modality.split(',')]
+                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset, mode=mode)
                 else:
                     pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
             elif opt.fusion_method == 'no':
