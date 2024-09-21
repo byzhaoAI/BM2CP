@@ -207,7 +207,7 @@ def main():
                                 round_loss_v += criterion(output_dict, batch_data['ego']['label_dict'], prefix='_v{}'.format(round_id))
 
             # criterion.logging(epoch, i, len(train_loader), writer)
-            criterion.logging(epoch, i, len(train_loader), writer)
+            criterion.logging(epoch+1, i, len(train_loader), writer)
 
             if False:
             #if len(output_dict) > 2:
@@ -296,7 +296,7 @@ def main():
             writer.add_scalar('Validate_Loss', valid_ave_loss, epoch)
 
             with open(os.path.join(saved_path, 'validation_loss.txt'), 'a+') as f:
-                msg = 'Epoch[{}], loss[{}]. \n'.format(epoch, valid_ave_loss)
+                msg = 'Epoch[{}], loss[{}]. \n'.format(epoch+1, valid_ave_loss)
                 f.write(msg)
 
             # lowest val loss
