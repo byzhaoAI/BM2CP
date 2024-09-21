@@ -41,6 +41,8 @@ def test_parser():
                              'in npy file')
     parser.add_argument('--eval_epoch', type=int, default=None,
                         help='Set the checkpoint')
+    parser.add_argument('--modality', type=str, default='0,1',
+                        help='Set the checkpoint')
     parser.add_argument('--eval_best_epoch', type=bool, default=False,
                         help='Set the checkpoint')
     parser.add_argument('--comm_thre', type=float, default=None,
@@ -99,8 +101,8 @@ def main():
 
     eval_epochs = [11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28]
     # eval_epochs = [10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28]
-    eval_epochs = [11,12,13,14,15,16,17,18,19,20,21]
-    eval_epochs = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27]
+    # eval_epochs = [13,14,15,16,17,18,19,20,21,22,23,24,25,26,30]
+    eval_epochs = range(1, 26)
 
     for eval_epoch in eval_epochs:
         print('Loading Model from checkpoint')
@@ -132,7 +134,11 @@ def main():
                 elif opt.fusion_method == 'early':
                     pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_early_fusion(batch_data, model, opencood_dataset)
                 elif opt.fusion_method == 'intermediate':
-                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
+                    if 'vqm' in hypes['name']:
+                        mode = [int(ele) for ele in opt.modality.split(',')]
+                        pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset, mode=mode)
+                    else:
+                        pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
                 elif opt.fusion_method == 'no':
                     pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_no_fusion(batch_data, model, opencood_dataset)
                 
