@@ -117,6 +117,7 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
+    # unified_score: True
     # freeze
     backbone_fix: false
 
@@ -142,10 +143,6 @@ model:
           num_filters: [64]
         point_pillar_scatter:
           num_features: 64
-    
-      # params for modality fusion
-      modality_fusion:
-        num_modality: 2
 
     f2:
       # second 
@@ -190,6 +187,7 @@ model:
 loss:
   core_method: point_pillar_pyramid_loss
   args:
+    device: *device
     pos_cls_weight: 2.0
     cls:
       type: 'SigmoidFocalLoss'
@@ -213,7 +211,7 @@ loss:
     rec:
       weight: 1
     svd:
-      weight: 1
+      weight: 0.5
     bfp:
       weight: 1
 
