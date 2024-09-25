@@ -99,6 +99,15 @@ class PointPillarCoVQM(nn.Module):
         self.reg_head = nn.Conv2d(args['outC'], 7 * args['anchor_number'], kernel_size=1)
         self.dir_head = nn.Conv2d(args['outC'], args['dir_args']['num_bins'] * args['anchor_number'], kernel_size=1) # BIN_NUM = 2
 
+        self.agent_check()
+
+    def agent_check(self):     
+        for net in (self.f1, self.f2, self.f3):
+            if net is not None:
+                print(True)
+            else:
+                print(False)
+
     def freeze_backbone(self, net):
         for p in net.parameters():
             p.requires_grad = False
@@ -133,6 +142,7 @@ class PointPillarCoVQM(nn.Module):
         modality_len = []
         # process agent 1 data to get feature f1
         # f1: (b,m,c,h,w)
+
         if self.f1 is not None:
             batch_dict = {
                 'voxel_features': data_dict['processed_lidar']['voxel_features'],
