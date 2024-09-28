@@ -1,4 +1,4 @@
-name: dair_covqm_second+pointpillar
+name: dair_covqm_second+unproj
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -8,7 +8,7 @@ yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2 #4 #6
   epoches: 30
-  eval_freq: 2
+  eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
 
@@ -121,35 +121,19 @@ model:
     # freeze
     backbone_fix: false
 
-    f1:
-      # params for camera branch
-      use_camera: True
-      device: *device
-      img_params:
-        grid_conf: *grid_conf
-        data_aug_conf: *data_aug_conf
-        img_downsample: 8
-        bev_dim: 64
-
-      # params for lidar branch
-      use_lidar: True
-      pc_params:
-        voxel_size: *voxel_size1
-        lidar_range: *cav_lidar
-        pillar_vfe:
-          use_norm: true
-          with_distance: false
-          use_absolute_xyz: true
-          num_filters: [64]
-        point_pillar_scatter:
-          num_features: 64
-
     f2:
       # second 
       mean_vfe:
         feature_points: 4
       backbone_3d: # []
         num_features_out: 32 # 64/2
+
+    f3:
+      img_unproj:
+        grid_conf: *grid_conf
+        data_aug_conf: *data_aug_conf
+        img_downsample: 4
+        bev_dim: 64
 
     shrink_header:
       use: true

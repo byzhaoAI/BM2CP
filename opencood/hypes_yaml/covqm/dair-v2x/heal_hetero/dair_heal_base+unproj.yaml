@@ -7,8 +7,8 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2 #4 #6
-  epoches: 40
-  eval_freq: 2
+  epoches: 30
+  eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
 
@@ -118,7 +118,7 @@ model:
     proj_first: *proj_first
     supervise_single: False
     # freeze
-    backbone_fix: True
+    # backbone_fix: True
 
     f2:
       # second 
@@ -127,6 +127,7 @@ model:
       backbone_3d: # []
         num_features_out: 32 # 64/2
       model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
+      freeze: True
 
     f3:
       img_unproj:
@@ -143,10 +144,6 @@ model:
       kernal_size: [ 3 ]
       stride: [ 2 ]
       padding: [ 1 ]
-    
-    compression: # compression rate
-      input_dim: 64
-      compress_ratio: 1
 
     # params for collaborative fusion: where2comm
     fusion:
@@ -167,6 +164,7 @@ model:
 loss:
   core_method: point_pillar_pyramid_loss
   args:
+    device: *device
     pos_cls_weight: 2.0
     cls:
       type: 'SigmoidFocalLoss'

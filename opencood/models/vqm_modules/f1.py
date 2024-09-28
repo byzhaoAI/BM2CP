@@ -199,11 +199,12 @@ class CoVQMF1(nn.Module):
         self.fusion = MultiModalFusion(modal_dim)
         # self.camera_proj = nn.Conv2d(modal_dim, modal_dim, kernel_size=3, stride=1, padding=1)
         # self.lidar_proj = nn.Conv2d(modal_dim, modal_dim, kernel_size=3, stride=1, padding=1)
+        self.heal_conv = nn.Conv2d(modal_dim*2, modal_dim, kernel_size=3, stride=1, padding=1)
 
     def minmax_norm(self, data):
         return (data - data.min()) / (data.max() - data.min()) * 2 - 1
 
-    def forward(self, batch_dict, mode=[0,1], training=True):
+    def forward(self, batch_dict, mode=[0,1], training=True, for_heal=False):
         if self.use_lidar:
             batch_dict = self.pillar_vfe(batch_dict)
             batch_dict = self.scatter(batch_dict)
@@ -228,6 +229,13 @@ class CoVQMF1(nn.Module):
 
             # if not self.use_lidar:
             #     x = self.minmax_norm(x)
+        
+        if for_heal:
+            if self.use_lidar and self.use_camera:
+                return self.heal_conv(torch.cat([lidar_feature, x], dim=1))
+            if not self.use_camera:
+                return lidar_feature
+            return x
 
         # justify
         # if self.use_lidar and self.use_camera:
@@ -248,7 +256,7 @@ class CoVQMF1(nn.Module):
         x, rec_loss, svd_loss = self.fusion(modal_features, training=training)
         
         # x, rec_loss, svd_loss = self.mask_modality(lidar_feature, x, training, batch_dict['record_len'])
-        return x.unsqueeze(1), 1, rec_loss, svd_loss
+        return x.unsqueeze(1), modal_features, 1, rec_loss, svd_loss
 
     def mask_modality(self, x, y, training, record_len):
         """

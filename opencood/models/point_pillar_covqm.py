@@ -152,7 +152,7 @@ class PointPillarCoVQM(nn.Module):
                 'batch_size': torch.sum(record_len).cpu().numpy(),
                 'record_len': record_len
             }
-            f, m_len, rec_loss, svd_loss = self.f1(batch_dict, mode=mode, training=training)
+            f, f_single, m_len, rec_loss, svd_loss = self.f1(batch_dict, mode=mode, training=training)
             
             features, ego_features = self.regroup(f, record_len, select_idx=len(modality_len))
             if self.agent_len <= 1:
@@ -268,7 +268,6 @@ class PointPillarCoVQM(nn.Module):
 
         cls_preds = self.cls_head(fused_feature)
         reg_preds = self.reg_head(fused_feature)
-
         dir_preds = self.dir_head(fused_feature)
 
         # output
@@ -278,29 +277,30 @@ class PointPillarCoVQM(nn.Module):
             'bfp_loss': bfp_loss,
         })
 
-        if self.f1 is not None and training and m_len > 1:
-            output_dict.update({'modality_num': m_len})
+        if self.supervise_single and self.f1 is not None:
+            psm_single = self.cls_head(fused_feature_single)
+            rm_single = self.reg_head(fused_feature_single)
 
-            # (b*m_len,c,h,w) -> (b,m_len,c,h,w)
-            cls_preds = rearrange(cls_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
-            reg_preds = rearrange(reg_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
-            dir_preds = rearrange(dir_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len+1)
+            split_psm_single = self.regroup(psm_single, record_len)
+            split_rm_single = self.regroup(rm_single, record_len)
+            psm_single = []
+            rm_single = []
             
-            for x_idx in range(m_len):
-                output_dict.update({
-                    'cls_preds_{}'.format(x_idx): cls_preds[:,x_idx],
-                    'reg_preds_{}'.format(x_idx): reg_preds[:,x_idx],
-                    'dir_preds_{}'.format(x_idx): dir_preds[:,x_idx],
-                    # 'occ_single_list_{}'.format(x_idx): eval(f"split_occ_outputs{x_idx}"),
-                })
-
-            output_dict.update({
-                'cls_preds': cls_preds[:,-1],
-                'reg_preds': reg_preds[:,-1],
-                'dir_preds': dir_preds[:,-1],
-                # 'psm': cls_preds[:,-1],
-                # 'rm': reg_preds[:,-1],
-            })
+            for b in range(len(split_psm_single)):
+                psm_single_v.append(split_psm_single[b][0:1])
+                psm_single_i.append(split_psm_single[b][1:2])
+                rm_single_v.append(split_rm_single[b][0:1])
+                rm_single_i.append(split_rm_single[b][1:2])
+            psm_single_v = torch.cat(psm_single_v, dim=0)
+            psm_single_i = torch.cat(psm_single_i, dim=0)
+            rm_single_v = torch.cat(rm_single_v, dim=0)
+            rm_single_i = torch.cat(rm_single_i, dim=0)
+            output_dict.update({'psm_single_v': psm_single_v,
+                        'psm_single_i': psm_single_i,
+                        'rm_single_v': rm_single_v,
+                        'rm_single_i': rm_single_i,
+                        'comm_rate': communication_rates
+                        })
 
             return output_dict
 

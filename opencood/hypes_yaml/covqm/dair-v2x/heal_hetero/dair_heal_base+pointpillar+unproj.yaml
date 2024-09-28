@@ -1,4 +1,4 @@
-name: dair_covqm_hetero
+name: dair_heal_base+pointpillar+unproj
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -6,11 +6,11 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 1 #4 #6
+  batch_size: &batch_size 2 #4 #6
   epoches: 30
   eval_freq: 5
   save_freq: 1
-  max_cav: &max_cav 3
+  max_cav: &max_cav 2
 
 device: &device cuda
 
@@ -109,7 +109,7 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_covqm
+  core_method: point_pillar_heal_hetero
   
   args:
     device: *device
@@ -117,20 +117,10 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
-    # unified_score: True
     # freeze
-    backbone_fix: false
+    # backbone_fix: True
 
     f1:
-      # params for camera branch
-      use_camera: True
-      device: *device
-      img_params:
-        grid_conf: *grid_conf
-        data_aug_conf: *data_aug_conf
-        img_downsample: 8
-        bev_dim: 64
-
       # params for lidar branch
       use_lidar: True
       pc_params:
@@ -143,6 +133,8 @@ model:
           num_filters: [64]
         point_pillar_scatter:
           num_features: 64
+      model_path: 'opencood/logs/dair_heal_base+pointpillar_2024_09_27_05_10_50'
+      freeze: True
 
     f2:
       # second 
@@ -150,6 +142,8 @@ model:
         feature_points: 4
       backbone_3d: # []
         num_features_out: 32 # 64/2
+      model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
+      freeze: True
 
     f3:
       img_unproj:
@@ -157,7 +151,7 @@ model:
         data_aug_conf: *data_aug_conf
         img_downsample: 4
         bev_dim: 64
-
+      freeze: False
     shrink_header:
       use: true
       input_dim: 384 # 128 * 3
@@ -165,8 +159,6 @@ model:
       kernal_size: [ 3 ]
       stride: [ 2 ]
       padding: [ 1 ]
-    
-    compression: 0 # compression rate
 
     # params for collaborative fusion: where2comm
     fusion:
@@ -211,7 +203,7 @@ loss:
     rec:
       weight: 1
     svd:
-      weight: 0.5
+      weight: 1
     bfp:
       weight: 1
 
@@ -226,5 +218,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10, 20]
+  step_size: [15, 30]
 
