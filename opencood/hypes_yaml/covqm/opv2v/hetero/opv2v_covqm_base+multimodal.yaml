@@ -1,4 +1,4 @@
-name: opv2v_covqm_base+unproj
+name: opv2v_covqm_base+multimodal
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
@@ -115,6 +115,29 @@ model:
     # unified_score: True
     backbone_fix: False
 
+    f1:
+      # params for camera branch
+      use_camera: True
+      device: *device
+      img_params:
+        grid_conf: *grid_conf
+        data_aug_conf: *data_aug_conf
+        img_downsample: 4
+        bev_dim: 64
+
+      # params for lidar branch
+      use_lidar: True
+      pc_params:
+        voxel_size: *voxel_size1
+        lidar_range: *cav_lidar
+        pillar_vfe:
+          use_norm: True
+          with_distance: False
+          use_absolute_xyz: True
+          num_filters: [ 64 ]
+        point_pillar_scatter:
+          num_features: 64
+
     f2:
       # second 
       mean_vfe:
@@ -123,13 +146,6 @@ model:
         num_features_out: 32 # 64/2
       model_path: 'opencood/logs/opv2v_covqm_base_2024_09_15_04_58_43'
       freeze: True
-
-    f3:
-      img_unproj:
-        grid_conf: *grid_conf
-        data_aug_conf: *data_aug_conf
-        img_downsample: 4
-        bev_dim: 64
 
     shrink_header:
       use: true

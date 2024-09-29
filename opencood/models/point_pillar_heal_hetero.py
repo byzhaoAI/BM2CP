@@ -27,45 +27,47 @@ class PointPillarHEALHetero(nn.Module):
         self.backbone_fix = args['backbone_fix'] if 'backbone_fix' in args else False
 
         self.agent_len = 0
+
         self.f1 = None
+        self.freeze_f1 = False
         if 'f1' in args:
             if self.f1 is None:
                 self.f1 = CoVQMF1(args['f1'])
             self.agent_len += 1
             print("Number of parameter f1: %d" % (sum([param.nelement() for param in self.f1.parameters()])))
-        
+
             if 'freeze' in args['f1'] and args['f1']['freeze']:
-                self.freeze_backbone(self.f1) 
-                print('f1 net freezed.')
+                self.freeze_f1 = True
         if self.agent_len > self.max_cav:
             self.agent_len -= 1
             self.f1 = None
         
 
         self.f2 = None
+        self.freeze_f2 = False
         if 'f2' in args:
             if self.f2 is None:
                 self.f2 = CoVQMF2(args['f2'])
             self.agent_len += 1
             print("Number of parameter f2: %d" % (sum([param.nelement() for param in self.f2.parameters()])))
-            
+
             if 'freeze' in args['f2'] and args['f2']['freeze']:
-                self.freeze_backbone(self.f2)
-                print('f2 net freezed.')
+                self.freeze_f2 = True
+        
         if self.agent_len > self.max_cav:
             self.agent_len -= 1
             self.f2 = None
 
         self.f3 = None
+        self.freeze_f3 = False
         if 'f3' in args:
             if self.f3 is None:
                 self.f3 = CoVQMF3(args['f3'])
             self.agent_len += 1
             print("Number of parameter f3: %d" % (sum([param.nelement() for param in self.f3.parameters()])))
-        
+
             if 'freeze' in args['f3'] and args['f3']['freeze']:
-                self.freeze_backbone(self.f3)
-                print('f3 net freezed.')
+                self.freeze_f3 = True
         if self.agent_len > self.max_cav:
             self.agent_len -= 1
             self.f3 = None
@@ -95,6 +97,16 @@ class PointPillarHEALHetero(nn.Module):
             self.f2 = f2
         if f3 is not None:
             self.f3 = f3
+
+        if self.freeze_f1:
+            self.freeze_backbone(self.f1) 
+            print('f1 net freezed.')
+        if self.freeze_f2:
+            self.freeze_backbone(self.f2)
+            print('f2 net freezed.')
+        if self.freeze_f3:
+            self.freeze_backbone(self.f3)
+            print('f3 net freezed.')
     
     def freeze_backbone(self, net):
         for p in net.parameters():

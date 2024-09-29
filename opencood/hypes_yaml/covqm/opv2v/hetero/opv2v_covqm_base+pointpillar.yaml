@@ -6,7 +6,7 @@ yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2
   epoches: &epoches 30
-  eval_freq: 2
+  eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
 
@@ -112,6 +112,7 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
+    # unified_score: True
     backbone_fix: False
 
     f1:
@@ -166,6 +167,7 @@ model:
 loss:
   core_method: point_pillar_pyramid_loss
   args:
+    device: *device
     pos_cls_weight: 2.0
     cls:
       type: 'SigmoidFocalLoss'

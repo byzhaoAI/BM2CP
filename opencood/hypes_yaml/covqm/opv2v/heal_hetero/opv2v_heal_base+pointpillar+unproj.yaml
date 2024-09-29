@@ -1,10 +1,10 @@
-name: opv2v_covqm_base+unproj
+name: opv2v_heal_base+pointpillar+unproj
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 1
   epoches: &epoches 30
   eval_freq: 5
   save_freq: 1
@@ -104,7 +104,7 @@ postprocess:
 
 # Model related
 model:
-  core_method: point_pillar_covqm
+  core_method: point_pillar_heal_hetero
 
   args:
     device: *device
@@ -112,8 +112,23 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
-    # unified_score: True
-    backbone_fix: False
+    # backbone_fix: True
+
+    f1:
+      # params for lidar branch
+      use_lidar: True
+      pc_params:
+        voxel_size: *voxel_size1
+        lidar_range: *cav_lidar
+        pillar_vfe:
+          use_norm: True
+          with_distance: False
+          use_absolute_xyz: True
+          num_filters: [ 64 ]
+        point_pillar_scatter:
+          num_features: 64
+      model_path: 'opencood/logs/opv2v_heal_base+pointpillar_2024_09_28_17_21_05'
+      freeze: True
 
     f2:
       # second 
@@ -130,6 +145,7 @@ model:
         data_aug_conf: *data_aug_conf
         img_downsample: 4
         bev_dim: 64
+      freeze: False
 
     shrink_header:
       use: true
@@ -139,7 +155,6 @@ model:
       stride: [ 2 ]
       padding: [ 1 ]
     
-    compression: 0  # Compression rate
 
     # params for collaborative fusion: where2comm
     fusion:

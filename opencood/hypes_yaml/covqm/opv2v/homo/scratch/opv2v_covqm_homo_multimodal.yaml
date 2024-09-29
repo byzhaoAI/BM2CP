@@ -6,7 +6,7 @@ yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 1
   epoches: &epoches 30
-  eval_freq: 2
+  eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
 
@@ -139,9 +139,6 @@ model:
         point_pillar_scatter:
           num_features: 64
     
-      # params for modality fusion
-      modality_fusion:
-        num_modality: 2
 
     shrink_header:
       use: true
@@ -210,6 +207,6 @@ optimizer:
 
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
-  gamma: 0.2
-  step_size: [10, 20]
+  gamma: 0.1
+  step_size: [10, 15, 20, 25, 30]
 
