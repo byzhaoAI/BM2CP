@@ -10,7 +10,7 @@ train_params:
   epoches: 30
   eval_freq: 5
   save_freq: 1
-  max_cav: &max_cav 2
+  max_cav: &max_cav 3
 
 device: &device cuda
 

@@ -70,22 +70,25 @@ def main():
                             )
 
     print('Creating Model')
-    # model = train_utils.create_model(hypes)
+    model = train_utils.create_model(hypes)
     f1_net, f2_net, f3_net = None, None, None
     if 'f1' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f1']:
         f1_net = train_utils.create_model(hypes)
         _, f1_net = train_utils.load_saved_model(hypes['model']['args']['f1']['model_path'], f1_net)
-        f1_net = f1_net.f1
+        if hypes['model']['args']['f1']['freeze']:
+            f1_net = f1_net.f1
     if 'f2' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f2']:
         f2_net = train_utils.create_model(hypes)
         _, f2_net = train_utils.load_saved_model(hypes['model']['args']['f2']['model_path'], f2_net)
-        f2_net = f2_net.f2
+        if hypes['model']['args']['f2']['freeze']:
+            f2_net = f2_net.f2
     if 'f3' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f3']:
         f3_net = train_utils.create_model(hypes)
         _, f3_net = train_utils.load_saved_model(hypes['model']['args']['f3']['model_path'], f3_net)
-        f3_net = f3_net.f3
-    
-    model = train_utils.create_covqm_model(hypes, f1_net, f2_net, f3_net)
+        if hypes['model']['args']['f3']['freeze']:
+            f3_net = f3_net.f3
+    model.update_model(None, None, None, None, None, f1_net, f2_net, f3_net)
+
     total = sum([param.nelement() for param in model.parameters()])
     print("Number of parameter: %d" % (total))
     # print(model)
@@ -186,34 +189,21 @@ def main():
                 # second argument is always your label dictionary.
                 final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
                 collect_unit_loss = [output_dict['rec_loss'].item(), output_dict['svd_loss'].item(), output_dict['bfp_loss'].item()]
-                if 'modality_num' in output_dict and output_dict['modality_num'] > 1:
-                    for m_idx in range(output_dict['modality_num']):
-                        unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
-                        final_loss = final_loss + unit_loss
-                        collect_unit_loss.append(unit_loss.item())
+                # if 'modality_num' in output_dict and output_dict['modality_num'] > 1:
+                #     for m_idx in range(output_dict['modality_num']):
+                #         unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
+                #         final_loss = final_loss + unit_loss
+                #         collect_unit_loss.append(unit_loss.item())
                 final_loss = criterion.rec_forward(output_dict, final_loss)
-
-            if False:
-            #if len(output_dict) > 2:
-                single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
-                single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
-                if 'fusion_args' in hypes['model']['args']:
-                    if 'communication' in hypes['model']['args']['fusion_args']:
-                        comm = hypes['model']['args']['fusion_args']['communication']
-                        if ('round' in comm) and comm['round'] > 1:
-                            round_loss_v = 0
-                            with_round_loss = True
-                            for round_id in range(1, comm['round']):
-                                round_loss_v += criterion(output_dict, batch_data['ego']['label_dict'], prefix='_v{}'.format(round_id))
+                if hypes['model']['args']['supervise_single']:
+                    if 'dair' in opt.hypes_yaml:
+                        single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
+                        single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
+                        final_loss = final_loss + single_loss_v + single_loss_i
+                        collect_unit_loss = collect_unit_loss + [single_loss_v.item(), single_loss_i.item()]
 
             # criterion.logging(epoch, i, len(train_loader), writer)
-            criterion.logging(epoch+1, i, len(train_loader), writer)
-
-            if False:
-            #if len(output_dict) > 2:
-                final_loss += single_loss_v + single_loss_i
-                if with_round_loss:
-                    final_loss += round_loss_v
+            criterion.logging(epoch+1, i, len(train_loader), writer)    
             
             with open(os.path.join(saved_path, 'train_loss.txt'), 'a+') as f:
                 msg = "[epoch %d][%d/%d][%s] || Total || %.5f, Rec: %.5f, SVD: %.5f, BFP: %.5f || " % (

@@ -1,4 +1,4 @@
-name: dair_heal_base+pointpillar
+name: dair_heal_base+multimodal
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"

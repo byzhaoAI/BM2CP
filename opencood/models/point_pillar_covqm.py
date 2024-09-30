@@ -18,7 +18,7 @@ from opencood.models.vqm_modules.proj import pool_feat, match_loss
 
 
 class PointPillarCoVQM(nn.Module):    
-    def __init__(self, args, f1_net=None, f2_net=None, f3_net=None):
+    def __init__(self, args):
         super(PointPillarCoVQM, self).__init__()
         # cuda选择
         self.device = args['device']
@@ -31,55 +31,41 @@ class PointPillarCoVQM(nn.Module):
             print('No BFP is used.')
 
         self.agent_len = 0
-        self.f1 = None
-        if f1_net is not None:
-            self.f1 = f1_net
+
+        self.f1, self.freeze_f1= None, False
         if 'f1' in args:
-            if self.f1 is not None:
-                if 'freeze' in args['f1'] and args['f1']['freeze']:
-                    self.freeze_backbone(self.f1) 
-                    print('f1 net freezed.')
-            else:
-                self.f1 = CoVQMF1(args['f1'])
-            self.agent_len += 1
+            self.f1 = CoVQMF1(args['f1'])
+            if 'freeze' in args['f1'] and args['f1']['freeze']:
+                self.freeze_f1 = True
             print("Number of parameter f1: %d" % (sum([param.nelement() for param in self.f1.parameters()])))
-        if self.agent_len > self.max_cav:
-            self.agent_len -= 1
-            self.f1 = None
+            self.agent_len += 1
+            if self.agent_len > self.max_cav:
+                self.agent_len -= 1
+                self.f1 = None
         
 
-        self.f2 = None
-        if f2_net is not None:
-            self.f2 = f2_net
+        self.f2, self.freeze_f2 = None, False
         if 'f2' in args:
-            if self.f2 is not None:
-                if 'freeze' in args['f2'] and args['f2']['freeze']:
-                    self.freeze_backbone(self.f2)
-                    print('f2 net freezed.')
-            else:
-                self.f2 = CoVQMF2(args['f2'])
-            self.agent_len += 1
+            self.f2 = CoVQMF2(args['f2'])
+            if 'freeze' in args['f2'] and args['f2']['freeze']:
+                self.freeze_f2 = True
             print("Number of parameter f2: %d" % (sum([param.nelement() for param in self.f2.parameters()])))
-        if self.agent_len > self.max_cav:
-            self.agent_len -= 1
-            self.f2 = None
+            self.agent_len += 1
+            if self.agent_len > self.max_cav:
+                self.agent_len -= 1
+                self.f2 = None
         self.f2_proj = nn.Conv2d(args['fusion']['num_filters'][0], args['fusion']['num_filters'][0], kernel_size=3, stride=1, padding=1)
 
-        self.f3 = None
-        if f3_net is not None:
-            self.f3 = f3_net
+        self.f3, self.freeze_f3 = None, False
         if 'f3' in args:
-            if self.f3 is not None:
-                if 'freeze' in args['f3'] and args['f3']['freeze']:
-                    self.freeze_backbone(self.f3)
-                    print('f3 net freezed.')
-            else:
-                self.f3 = CoVQMF3(args['f3'])
-            self.agent_len += 1
+            self.f3 = CoVQMF3(args['f3'])
+            if 'freeze' in args['f3'] and args['f3']['freeze']:
+                self.freeze_f3 = True
             print("Number of parameter f3: %d" % (sum([param.nelement() for param in self.f3.parameters()])))
-        if self.agent_len > self.max_cav:
-            self.agent_len -= 1
-            self.f3 = None
+            self.agent_len += 1
+            if self.agent_len > self.max_cav:
+                self.agent_len -= 1
+                self.f3 = None
         self.f3_proj = nn.Conv2d(args['fusion']['num_filters'][0], args['fusion']['num_filters'][0], kernel_size=3, stride=1, padding=1)
 
 
@@ -100,6 +86,29 @@ class PointPillarCoVQM(nn.Module):
         self.dir_head = nn.Conv2d(args['outC'], args['dir_args']['num_bins'] * args['anchor_number'], kernel_size=1) # BIN_NUM = 2
 
         self.agent_check()
+
+    def update_model(self, shrink_conv, backbone, cls_head, reg_head, dir_head, f1=None, f2=None, f3=None):
+        # self.shrink_conv = shrink_conv
+        # self.pyramid_backbone = backbone
+        # self.cls_head = cls_head
+        # self.reg_head = reg_head
+        # self.dir_head = dir_head
+        if f1 is not None:
+            self.f1 = f1
+        if f2 is not None:
+            self.f2 = f2
+        if f3 is not None:
+            self.f3 = f3
+
+        if self.freeze_f1:
+            self.freeze_backbone(self.f1) 
+            print('f1 net freezed.')
+        if self.freeze_f2:
+            self.freeze_backbone(self.f2)
+            print('f2 net freezed.')
+        if self.freeze_f3:
+            self.freeze_backbone(self.f3)
+            print('f3 net freezed.')
 
     def agent_check(self):     
         for net in (self.f1, self.f2, self.f3):

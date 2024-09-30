@@ -28,49 +28,39 @@ class PointPillarHEALHetero(nn.Module):
 
         self.agent_len = 0
 
-        self.f1 = None
-        self.freeze_f1 = False
+        self.f1, self.freeze_f1= None, False
         if 'f1' in args:
-            if self.f1 is None:
-                self.f1 = CoVQMF1(args['f1'])
-            self.agent_len += 1
-            print("Number of parameter f1: %d" % (sum([param.nelement() for param in self.f1.parameters()])))
-
+            self.f1 = CoVQMF1(args['f1'])
             if 'freeze' in args['f1'] and args['f1']['freeze']:
                 self.freeze_f1 = True
-        if self.agent_len > self.max_cav:
-            self.agent_len -= 1
-            self.f1 = None
+            print("Number of parameter f1: %d" % (sum([param.nelement() for param in self.f1.parameters()])))
+            self.agent_len += 1
+            if self.agent_len > self.max_cav:
+                self.agent_len -= 1
+                self.f1 = None
         
 
-        self.f2 = None
-        self.freeze_f2 = False
+        self.f2, self.freeze_f2 = None, False
         if 'f2' in args:
-            if self.f2 is None:
-                self.f2 = CoVQMF2(args['f2'])
-            self.agent_len += 1
-            print("Number of parameter f2: %d" % (sum([param.nelement() for param in self.f2.parameters()])))
-
+            self.f2 = CoVQMF2(args['f2'])
             if 'freeze' in args['f2'] and args['f2']['freeze']:
                 self.freeze_f2 = True
-        
-        if self.agent_len > self.max_cav:
-            self.agent_len -= 1
-            self.f2 = None
-
-        self.f3 = None
-        self.freeze_f3 = False
-        if 'f3' in args:
-            if self.f3 is None:
-                self.f3 = CoVQMF3(args['f3'])
+            print("Number of parameter f2: %d" % (sum([param.nelement() for param in self.f2.parameters()])))
             self.agent_len += 1
-            print("Number of parameter f3: %d" % (sum([param.nelement() for param in self.f3.parameters()])))
+            if self.agent_len > self.max_cav:
+                self.agent_len -= 1
+                self.f2 = None
 
+        self.f3, self.freeze_f3 = None, False
+        if 'f3' in args:
+            self.f3 = CoVQMF3(args['f3'])
             if 'freeze' in args['f3'] and args['f3']['freeze']:
                 self.freeze_f3 = True
-        if self.agent_len > self.max_cav:
-            self.agent_len -= 1
-            self.f3 = None
+            print("Number of parameter f3: %d" % (sum([param.nelement() for param in self.f3.parameters()])))
+            self.agent_len += 1
+            if self.agent_len > self.max_cav:
+                self.agent_len -= 1
+                self.f3 = None
 
         self.shrink_flag = False
         if 'shrink_header' in args:
