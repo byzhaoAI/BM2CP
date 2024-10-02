@@ -4,11 +4,11 @@ validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 1
   epoches: &epoches 30
   eval_freq: 5
   save_freq: 1
-  max_cav: &max_cav 2
+  max_cav: &max_cav 3
 
 device: &device cuda
 
