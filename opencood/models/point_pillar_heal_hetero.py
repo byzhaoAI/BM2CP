@@ -76,11 +76,16 @@ class PointPillarHEALHetero(nn.Module):
         self.dir_head = nn.Conv2d(args['outC'], args['dir_args']['num_bins'] * args['anchor_number'], kernel_size=1) # BIN_NUM = 2
 
     def update_model(self, shrink_conv, backbone, cls_head, reg_head, dir_head, f1=None, f2=None, f3=None):
-        # self.shrink_conv = shrink_conv
-        # self.pyramid_backbone = backbone
-        # self.cls_head = cls_head
-        # self.reg_head = reg_head
-        # self.dir_head = dir_head
+        self.shrink_conv = shrink_conv
+        self.pyramid_backbone = backbone
+        self.cls_head = cls_head
+        self.reg_head = reg_head
+        self.dir_head = dir_head
+
+        for module in (shrink_conv, backbone, cls_head, reg_head, dir_head):
+            print('freeze module.')
+            self.freeze_backbone(module)
+        
         if f1 is not None:
             self.f1 = f1
         if f2 is not None:
@@ -115,7 +120,7 @@ class PointPillarHEALHetero(nn.Module):
                 select_x.append(_x[select_idx:select_idx+1])
         return select_x
 
-    def forward(self, data_dict, mode=[0,1], training=True):
+    def forward(self, data_dict, single_train=False):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
         rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
@@ -126,6 +131,76 @@ class PointPillarHEALHetero(nn.Module):
         modality_len = []
         # process agent 1 data to get feature f1
         # f1: (b,m,c,h,w)
+        if single_train:
+            if not self.freeze_f1 and self.f1 is not None:
+                batch_dict = {
+                    'voxel_features': data_dict['processed_lidar']['voxel_features'],
+                    'voxel_coords': data_dict['processed_lidar']['voxel_coords'],
+                    'voxel_num_points': data_dict['processed_lidar']['voxel_num_points'],
+                    'image_inputs': data_dict['image_inputs'],
+                    'batch_size': torch.sum(record_len).cpu().numpy(),
+                    'record_len': record_len
+                }
+                features = self.f1(batch_dict, training=training, for_heal=True)
+            
+            # process agent 2 data to get feature f2
+            # (b,c,h,w)
+            if not self.freeze_f2 and self.f2 is not None:
+                batch_dict = {
+                    'voxel_features': data_dict['processed_lidar2']['voxel_features'],
+                    'voxel_coords': data_dict['processed_lidar2']['voxel_coords'],
+                    'voxel_num_points': data_dict['processed_lidar2']['voxel_num_points'],
+                    'batch_size': torch.sum(record_len).cpu().numpy(),
+                    'record_len': record_len
+                }
+                features = self.f2(batch_dict)
+
+            # process agent 3 data to get feature f3
+            # (b,c,h,w)
+            if not self.freeze_f3 and self.f3 is not None:
+                features = self.f3(data_dict['image_inputs'])
+
+            """For feature transformation"""
+            self.H = (self.cav_range[4] - self.cav_range[1])
+            self.W = (self.cav_range[3] - self.cav_range[0])
+            self.fake_voxel_size = 1
+            affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
+
+            # heter_feature_2d is downsampled 2x
+            # add croping information to collaboration module
+            fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+                                                    features,
+                                                    record_len, 
+                                                    affine_matrix, 
+                                                    None, 
+                                                    None
+                                                )
+
+            if self.shrink_flag:
+                fused_feature = self.shrink_conv(fused_feature)
+
+            cls_preds = self.cls_head(fused_feature)
+            reg_preds = self.reg_head(fused_feature)
+            dir_preds = self.dir_head(fused_feature)
+
+            # output
+            output_dict.update({
+                'rec_loss': rec_loss,
+                'svd_loss': svd_loss,
+                'bfp_loss': bfp_loss,
+            })
+
+            output_dict.update({
+                'cls_preds': cls_preds,
+                'reg_preds': reg_preds,
+                'dir_preds': dir_preds,
+                'psm': cls_preds,
+                'rm': reg_preds,
+            })
+
+            return output_dict
+            
+        
         if self.f1 is not None:
             batch_dict = {
                 'voxel_features': data_dict['processed_lidar']['voxel_features'],
