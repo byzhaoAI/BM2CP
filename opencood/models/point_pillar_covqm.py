@@ -24,7 +24,7 @@ class PointPillarCoVQM(nn.Module):
         self.device = args['device']
         self.max_cav = args['max_cav']
         self.cav_range = args['lidar_range']
-        self.supervise_single = args['supervise_single'] if 'supervise_single' in args else False
+        self.supervise_single_modality = args['supervise_single_modality'] if 'supervise_single_modality' in args else False
         self.unified_score = args['unified_score'] if 'unified_score' in args else False
         self.bfp = args['bfp'] if 'bfp' in args else True
         if not self.bfp:
@@ -140,7 +140,7 @@ class PointPillarCoVQM(nn.Module):
             select_ego.append(_x[0:1])
         return select_x, select_ego
 
-    def forward(self, data_dict, mode=[0,1], training=True):
+    def forward(self, data_dict, mode=[0,1], training=False):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
         rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
@@ -161,7 +161,7 @@ class PointPillarCoVQM(nn.Module):
                 'batch_size': torch.sum(record_len).cpu().numpy(),
                 'record_len': record_len
             }
-            f, f_single, m_len, rec_loss, svd_loss = self.f1(batch_dict, mode=mode, training=training)
+            f, _, rec_loss, svd_loss = self.f1(batch_dict, mode=mode, training=training)
             
             features, ego_features = self.regroup(f, record_len, select_idx=len(modality_len))
             if self.agent_len <= 1:
@@ -286,33 +286,6 @@ class PointPillarCoVQM(nn.Module):
             'bfp_loss': bfp_loss,
         })
 
-        if self.supervise_single and self.f1 is not None:
-            psm_single = self.cls_head(fused_feature_single)
-            rm_single = self.reg_head(fused_feature_single)
-
-            split_psm_single = self.regroup(psm_single, record_len)
-            split_rm_single = self.regroup(rm_single, record_len)
-            psm_single = []
-            rm_single = []
-            
-            for b in range(len(split_psm_single)):
-                psm_single_v.append(split_psm_single[b][0:1])
-                psm_single_i.append(split_psm_single[b][1:2])
-                rm_single_v.append(split_rm_single[b][0:1])
-                rm_single_i.append(split_rm_single[b][1:2])
-            psm_single_v = torch.cat(psm_single_v, dim=0)
-            psm_single_i = torch.cat(psm_single_i, dim=0)
-            rm_single_v = torch.cat(rm_single_v, dim=0)
-            rm_single_i = torch.cat(rm_single_i, dim=0)
-            output_dict.update({'psm_single_v': psm_single_v,
-                        'psm_single_i': psm_single_i,
-                        'rm_single_v': rm_single_v,
-                        'rm_single_i': rm_single_i,
-                        'comm_rate': communication_rates
-                        })
-
-            return output_dict
-
         output_dict.update({
             'cls_preds': cls_preds,
             'reg_preds': reg_preds,
@@ -320,6 +293,45 @@ class PointPillarCoVQM(nn.Module):
             # 'psm': cls_preds,
             # 'rm': reg_preds,
         })
+
+        # if training and self.supervise_single_modality and self.f1 is not None:
+        #     output_dict.update({'modality_num': m_len})
+
+        #     if self.unified_score:
+        #         fused_feature_single = self.pyramid_backbone.resnet._forward_impl(
+        #             rearrange(f_single, 'b m c h w -> (b m) c h w'), 
+        #             return_interm=False
+        #         )
+        #         fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+        #                                                 f_single,
+        #                                                 self.cls_head(fused_feature_single).sigmoid().max(dim=1)[0].unsqueeze(1),
+        #                                                 record_len, 
+        #                                                 affine_matrix, 
+        #                                                 None, 
+        #                                                 None
+        #                                             )
+        #     else:    
+        #         fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+        #                                                 f_single,
+        #                                                 record_len, 
+        #                                                 affine_matrix, 
+        #                                                 None, 
+        #                                                 None
+        #                                             )
+        #     cls_preds = self.cls_head(fused_feature)
+        #     reg_preds = self.reg_head(fused_feature)
+        #     dir_preds = self.dir_head(fused_feature)
+
+        #     cls_preds = rearrange(cls_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
+        #     reg_preds = rearrange(reg_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
+        #     dir_preds = rearrange(dir_preds, '(b m) c h w -> b m c h w', b=len(record_len), m=m_len)
+        
+        #     for m in range(m_len):
+        #         output_dict.update({
+        #             f'cls_preds_{m}': cls_preds[:,m],
+        #             f'reg_preds_{m}': reg_preds[:,m],
+        #             f'dir_preds_{m}': dir_preds[:,m],
+        #         })
 
         return output_dict
 

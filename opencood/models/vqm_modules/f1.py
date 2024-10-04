@@ -256,7 +256,7 @@ class CoVQMF1(nn.Module):
         x, rec_loss, svd_loss = self.fusion(modal_features, training=training)
         
         # x, rec_loss, svd_loss = self.mask_modality(lidar_feature, x, training, batch_dict['record_len'])
-        return x.unsqueeze(1), modal_features, 1, rec_loss, svd_loss
+        return x.unsqueeze(1), m_len, rec_loss, svd_loss
 
     def mask_modality(self, x, y, training, record_len):
         """
