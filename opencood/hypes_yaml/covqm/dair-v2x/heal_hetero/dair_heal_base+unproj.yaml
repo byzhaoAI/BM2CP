@@ -135,6 +135,20 @@ model:
         data_aug_conf: *data_aug_conf
         img_downsample: 4
         bev_dim: 64
+      
+      backbone_args:
+        layer_nums: [3]
+        layer_strides: [1]
+        num_filters: [64]
+        inplanes: 64
+  
+      aligner_args:
+        core_method: convnext
+        spatial_align: false
+        args:
+          num_of_blocks: 3
+          dim: 64
+
       freeze: False
 
     shrink_header:

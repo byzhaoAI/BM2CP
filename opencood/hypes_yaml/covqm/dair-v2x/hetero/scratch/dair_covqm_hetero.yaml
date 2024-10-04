@@ -6,7 +6,7 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 1 #4 #6
+  batch_size: &batch_size 2 #4 #6
   epoches: 30
   eval_freq: 5
   save_freq: 1

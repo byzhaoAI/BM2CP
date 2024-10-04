@@ -121,6 +121,15 @@ model:
     backbone_fix: True
 
     f1:
+      # params for camera branch
+      use_camera: True
+      device: *device
+      img_params:
+        grid_conf: *grid_conf
+        data_aug_conf: *data_aug_conf
+        img_downsample: 8
+        bev_dim: 64
+      
       # params for lidar branch
       use_lidar: True
       pc_params:
@@ -133,6 +142,20 @@ model:
           num_filters: [64]
         point_pillar_scatter:
           num_features: 64
+
+      backbone_args:
+        layer_nums: [3]
+        layer_strides: [1]
+        num_filters: [64]
+        inplanes: 128
+  
+      aligner_args:
+        core_method: convnext
+        spatial_align: false
+        args:
+          num_of_blocks: 3
+          dim: 64
+
       freeze: False
 
     f2:

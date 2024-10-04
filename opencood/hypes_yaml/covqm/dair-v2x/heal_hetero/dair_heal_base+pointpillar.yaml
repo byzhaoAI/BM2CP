@@ -6,7 +6,7 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 1 #4 #6
+  batch_size: &batch_size 2 #4 #6
   epoches: 30
   eval_freq: 5
   save_freq: 1
@@ -133,6 +133,20 @@ model:
           num_filters: [64]
         point_pillar_scatter:
           num_features: 64
+        
+      backbone_args:
+        layer_nums: [3]
+        layer_strides: [1]
+        num_filters: [64]
+        inplanes: 64
+  
+      aligner_args:
+        core_method: convnext
+        spatial_align: false
+        args:
+          num_of_blocks: 3
+          dim: 64
+      
       freeze: False
 
     f2:
@@ -141,7 +155,7 @@ model:
         feature_points: 4
       backbone_3d: # []
         num_features_out: 32 # 64/2
-      model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
+      model_path: 'opencood/logs/dair_covqm/covqm_hetero/dair_covqm_base_2024_09_15_16_21_32'
       freeze: True
 
     shrink_header:
