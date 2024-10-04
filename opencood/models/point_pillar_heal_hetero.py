@@ -10,10 +10,9 @@ from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
 from opencood.models.heal_modules.pyramid_fuse import PyramidFusion
 
-from opencood.models.vqm_modules.f1 import CoVQMF1
-from opencood.models.vqm_modules.f2 import CoVQMF2
-from opencood.models.vqm_modules.f3 import CoVQMF3
-from opencood.models.vqm_modules.proj import pool_feat, match_loss
+from opencood.models.heal_modules.f1 import CoVQMF1
+from opencood.models.heal_modules.f2 import CoVQMF2
+from opencood.models.heal_modules.f3 import CoVQMF3
 
 
 class PointPillarHEALHetero(nn.Module):    
@@ -75,6 +74,8 @@ class PointPillarHEALHetero(nn.Module):
         self.reg_head = nn.Conv2d(args['outC'], 7 * args['anchor_number'], kernel_size=1)
         self.dir_head = nn.Conv2d(args['outC'], args['dir_args']['num_bins'] * args['anchor_number'], kernel_size=1) # BIN_NUM = 2
 
+        self.agent_check()
+
     def update_model(self, shrink_conv, backbone, cls_head, reg_head, dir_head, f1=None, f2=None, f3=None):
         self.shrink_conv = shrink_conv
         self.pyramid_backbone = backbone
@@ -106,6 +107,13 @@ class PointPillarHEALHetero(nn.Module):
     def freeze_backbone(self, net):
         for p in net.parameters():
             p.requires_grad = False
+
+    def agent_check(self):     
+        for net in (self.f1, self.f2, self.f3):
+            if net is not None:
+                print(True)
+            else:
+                print(False)
 
     def regroup(self, x, record_len, select_idx, unsqueeze=False):
         if unsqueeze:
@@ -141,7 +149,7 @@ class PointPillarHEALHetero(nn.Module):
                     'batch_size': torch.sum(record_len).cpu().numpy(),
                     'record_len': record_len
                 }
-                features = self.f1(batch_dict, training=training, for_heal=True)
+                features = self.f1(batch_dict)
             
             # process agent 2 data to get feature f2
             # (b,c,h,w)
@@ -210,7 +218,7 @@ class PointPillarHEALHetero(nn.Module):
                 'batch_size': torch.sum(record_len).cpu().numpy(),
                 'record_len': record_len
             }
-            f = self.f1(batch_dict, training=training, for_heal=True)
+            f = self.f1(batch_dict)
             if self.agent_len <= 1:
                 features = f
             else:                
