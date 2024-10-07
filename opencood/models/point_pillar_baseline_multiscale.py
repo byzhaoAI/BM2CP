@@ -1,7 +1,7 @@
 # Author: Yifan Lu <yifan_lu@sjtu.edu.cn>
 # a class that integrate multiple simple fusion methods (Single Scale)
 # Support F-Cooper, Self-Att, DiscoNet(wo KD), V2VNet, V2XViT, When2comm
-
+import torch
 import torch.nn as nn
 # from icecream import ic
 from opencood.models.common_modules.pillar_vfe import PillarVFE
@@ -11,6 +11,7 @@ from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
 
+from opencood.models.vqm_modules.f1 import CoVQMF1
 from opencood.models.coalign_modules.fusion_in_one import MaxFusion, AttFusion, DiscoFusion, V2VNetFusion, V2XViTFusion, When2commFusion
 from opencood.utils.transformation_utils import normalize_pairwise_tfm
 
@@ -21,11 +22,17 @@ class PointPillarBaselineMultiscale(nn.Module):
     def __init__(self, args):
         super(PointPillarBaselineMultiscale, self).__init__()
 
-        self.pillar_vfe = PillarVFE(args['pillar_vfe'],
+        if 'multimodal' in args:
+            self.multimodal = True
+            self.basebone = CoVQMF1(args['multimodal'])
+        else:
+            self.multimodal = False
+            self.pillar_vfe = PillarVFE(args['pillar_vfe'],
                                     num_point_features=4,
                                     voxel_size=args['voxel_size'],
                                     point_cloud_range=args['lidar_range'])
-        self.scatter = PointPillarScatter(args['point_pillar_scatter'])
+            self.scatter = PointPillarScatter(args['point_pillar_scatter'])
+        
         is_resnet = args['base_bev_backbone'].get("resnet", True) # default true
         if is_resnet:
             self.backbone = ResNetBEVBackbone(args['base_bev_backbone'], 64) # or you can use ResNetBEVBackbone, which is stronger
@@ -90,21 +97,27 @@ class PointPillarBaselineMultiscale(nn.Module):
         for p in self.reg_head.parameters():
             p.requires_grad = False
 
-    def forward(self, data_dict):
-        voxel_features = data_dict['processed_lidar']['voxel_features']
-        voxel_coords = data_dict['processed_lidar']['voxel_coords']
-        voxel_num_points = data_dict['processed_lidar']['voxel_num_points']
+    def forward(self, data_dict, mode=[0,1], training=False):
+        output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
+        rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device)
 
-        batch_dict = {'voxel_features': voxel_features,
-                      'voxel_coords': voxel_coords,
-                      'voxel_num_points': voxel_num_points,
-                      'record_len': record_len}
+        batch_dict = {
+                'voxel_features': data_dict['processed_lidar']['voxel_features'],
+                'voxel_coords': data_dict['processed_lidar']['voxel_coords'],
+                'voxel_num_points': data_dict['processed_lidar']['voxel_num_points'],
+                'image_inputs': data_dict['image_inputs'],
+                'record_len': record_len
+            }
+        if self.multimodal:
+            f, _, rec_loss, svd_loss = self.basebone(batch_dict, mode=mode, training=training)
+            batch_dict['spatial_features'] = f.squeeze(1)
+        else:
+            # n, 4 -> n, c
+            batch_dict = self.pillar_vfe(batch_dict)
+            # n, c -> N, C, H, W
+            batch_dict = self.scatter(batch_dict)
         
-        # n, 4 -> n, c
-        batch_dict = self.pillar_vfe(batch_dict)
-        # n, c -> N, C, H, W
-        batch_dict = self.scatter(batch_dict)
         # calculate pairwise affine transformation matrix
         _, _, H0, W0 = batch_dict['spatial_features'].shape # original feature map shape H0, W0
         t_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], H0, W0, self.voxel_size[0])
@@ -132,8 +145,14 @@ class PointPillarBaselineMultiscale(nn.Module):
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
 
-        output_dict = {'cls_preds': psm,
-                       'reg_preds': rm}
+        output_dict.update({
+            'cls_preds': psm,
+            'reg_preds': rm,
+            'rec_loss': rec_loss,
+            'svd_loss': svd_loss,
+            'bfp_loss': bfp_loss,
+        })
+
         output_dict.update({
             'psm': psm,
             'rm': rm

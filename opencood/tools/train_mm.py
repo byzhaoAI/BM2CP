@@ -87,7 +87,9 @@ def main():
         _, f3_net = train_utils.load_saved_model(hypes['model']['args']['f3']['model_path'], f3_net)
         if hypes['model']['args']['f3']['freeze']:
             f3_net = f3_net.f3
-    model.update_model(None, None, None, None, None, f1_net, f2_net, f3_net)
+    
+    if f1_net is not None or f2_net is not None or f3_net is not None:
+        model.update_model(None, None, None, None, None, f1_net, f2_net, f3_net)
 
     total = sum([param.nelement() for param in model.parameters()])
     print("Number of parameter: %d" % (total))
@@ -195,12 +197,12 @@ def main():
                 #         final_loss = final_loss + unit_loss
                 #         collect_unit_loss.append(unit_loss.item())
                 final_loss = criterion.rec_forward(output_dict, final_loss)
-                if hypes['model']['args']['supervise_single']:
-                    if 'dair' in opt.hypes_yaml:
-                        single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
-                        single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
-                        final_loss = final_loss + single_loss_v + single_loss_i
-                        collect_unit_loss = collect_unit_loss + [single_loss_v.item(), single_loss_i.item()]
+                # if hypes['model']['args']['supervise_single']:
+                #     if 'dair' in opt.hypes_yaml:
+                #         single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
+                #         single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
+                #         final_loss = final_loss + single_loss_v + single_loss_i
+                #         collect_unit_loss = collect_unit_loss + [single_loss_v.item(), single_loss_i.item()]
 
             # criterion.logging(epoch, i, len(train_loader), writer)
             criterion.logging(epoch+1, i, len(train_loader), writer)    

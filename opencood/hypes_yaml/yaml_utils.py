@@ -114,6 +114,8 @@ def load_point_pillar_params(param):
                 np.array(voxel_size)
     grid_size = np.round(grid_size).astype(np.int64)
     param['model']['args']['point_pillar_scatter']['grid_size'] = grid_size
+    if 'multimodal' in param['model']['args'] and 'pc_params' in param['model']['args']['multimodal']:
+        param['model']['args']['multimodal']['pc_params']['point_pillar_scatter']['grid_size'] = grid_size
 
     anchor_args = param['postprocess']['anchor_args']
 
