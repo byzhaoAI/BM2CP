@@ -88,11 +88,12 @@ class PointPillarCoVQM(nn.Module):
         self.agent_check()
 
     def update_model(self, shrink_conv, backbone, cls_head, reg_head, dir_head, f1=None, f2=None, f3=None):
-        # self.shrink_conv = shrink_conv
-        # self.pyramid_backbone = backbone
-        # self.cls_head = cls_head
-        # self.reg_head = reg_head
-        # self.dir_head = dir_head
+        self.shrink_conv = shrink_conv
+        self.pyramid_backbone = backbone
+        self.cls_head = cls_head
+        self.reg_head = reg_head
+        self.dir_head = dir_head
+        
         if f1 is not None:
             self.f1 = f1
         if f2 is not None:
@@ -290,8 +291,8 @@ class PointPillarCoVQM(nn.Module):
             'cls_preds': cls_preds,
             'reg_preds': reg_preds,
             'dir_preds': dir_preds,
-            # 'psm': cls_preds,
-            # 'rm': reg_preds,
+            'psm': cls_preds,
+            'rm': reg_preds,
         })
 
         # if training and self.supervise_single_modality and self.f1 is not None:
