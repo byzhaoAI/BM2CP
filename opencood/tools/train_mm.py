@@ -72,24 +72,28 @@ def main():
     print('Creating Model')
     model = train_utils.create_model(hypes)
     f1_net, f2_net, f3_net = None, None, None
+    shrink_conv, backbone, cls_head, reg_head, dir_head = None, None, None, None, None
+    if 'f3' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f3']:
+        f3_net = train_utils.create_model(hypes)
+        _, f3_net = train_utils.load_saved_model(hypes['model']['args']['f3']['model_path'], f3_net)
+        shrink_conv, backbone, cls_head, reg_head, dir_head = f3_net.shrink_conv, f3_net.pyramid_backbone, f3_net.cls_head, f3_net.reg_head, f3_net.dir_head
+        if hypes['model']['args']['f3']['freeze']:
+            f3_net = f3_net.f3
     if 'f1' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f1']:
         f1_net = train_utils.create_model(hypes)
         _, f1_net = train_utils.load_saved_model(hypes['model']['args']['f1']['model_path'], f1_net)
+        shrink_conv, backbone, cls_head, reg_head, dir_head = f1_net.shrink_conv, f1_net.pyramid_backbone, f1_net.cls_head, f1_net.reg_head, f1_net.dir_head
         if hypes['model']['args']['f1']['freeze']:
             f1_net = f1_net.f1
     if 'f2' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f2']:
         f2_net = train_utils.create_model(hypes)
         _, f2_net = train_utils.load_saved_model(hypes['model']['args']['f2']['model_path'], f2_net)
+        shrink_conv, backbone, cls_head, reg_head, dir_head = f2_net.shrink_conv, f2_net.pyramid_backbone, f2_net.cls_head, f2_net.reg_head, f2_net.dir_head
         if hypes['model']['args']['f2']['freeze']:
             f2_net = f2_net.f2
-    if 'f3' in hypes['model']['args'] and 'model_path' in hypes['model']['args']['f3']:
-        f3_net = train_utils.create_model(hypes)
-        _, f3_net = train_utils.load_saved_model(hypes['model']['args']['f3']['model_path'], f3_net)
-        if hypes['model']['args']['f3']['freeze']:
-            f3_net = f3_net.f3
     
     if f1_net is not None or f2_net is not None or f3_net is not None:
-        model.update_model(None, None, None, None, None, f1_net, f2_net, f3_net)
+        model.update_model(shrink_conv, backbone, cls_head, reg_head, dir_head, f1_net, f2_net, f3_net)
 
     total = sum([param.nelement() for param in model.parameters()])
     print("Number of parameter: %d" % (total))
@@ -196,7 +200,10 @@ def main():
                 #         unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
                 #         final_loss = final_loss + unit_loss
                 #         collect_unit_loss.append(unit_loss.item())
-                final_loss = criterion.rec_forward(output_dict, final_loss)
+                if hypes['loss']['core_method'] == 'point_pillar_loss':
+                    final_loss = final_loss + output_dict['rec_loss'] + output_dict['svd_loss'] + output_dict['bfp_loss']
+                else:
+                    final_loss = criterion.rec_forward(output_dict, final_loss)
                 # if hypes['model']['args']['supervise_single']:
                 #     if 'dair' in opt.hypes_yaml:
                 #         single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
