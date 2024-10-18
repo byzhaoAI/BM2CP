@@ -69,7 +69,7 @@ def inference_no_fusion(batch_data, model, dataset):
 
     return pred_box_tensor, pred_score, gt_box_tensor
 
-def inference_early_fusion(batch_data, model, dataset, mode=None):
+def inference_early_fusion(batch_data, model, dataset, modality_index=-1, mode=None):
     """
     Model inference for early fusion.
 
@@ -97,13 +97,15 @@ def inference_early_fusion(batch_data, model, dataset, mode=None):
         pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data[0], output_dict)
     else:
         cav_content = batch_data['ego']
-        if mode is not None:
+        if modality_index > -1:
+            output_dict['ego'] = model.inference_single(cav_content, modality_index)
+        elif mode is not None:
             output_dict['ego'] = model(cav_content, mode=mode, training=False) 
         else:
             output_dict['ego'] = model(cav_content) 
-        pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data, output_dict)
+        pred_box_tensor, pred_score, pred_dbev, gt_box_tensor = dataset.post_process(batch_data, output_dict)
     
-    return pred_box_tensor, pred_score, gt_box_tensor
+    return pred_box_tensor, pred_score, pred_dbev, gt_box_tensor
 
 def inference_intermediate_fusion_withcomm(batch_data, model, dataset):
     """
@@ -141,7 +143,7 @@ def inference_intermediate_fusion_withcomm(batch_data, model, dataset):
     # each_mask = output_dict['ego']['each_mask']
     return pred_box_tensor, pred_score, gt_box_tensor, comm_rates, output_dict['ego']['comm_vol'], times
     
-def inference_intermediate_fusion(batch_data, model, dataset, mode=None):
+def inference_intermediate_fusion(batch_data, model, dataset):
     """
     Model inference for early fusion.
 
@@ -158,8 +160,6 @@ def inference_intermediate_fusion(batch_data, model, dataset, mode=None):
     gt_box_tensor : torch.Tensor
         The tensor of gt bounding box.
     """
-    if mode is not None:
-        return inference_early_fusion(batch_data, model, dataset, mode) 
     return inference_early_fusion(batch_data, model, dataset)
 
 
