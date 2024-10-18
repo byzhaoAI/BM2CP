@@ -14,6 +14,7 @@ import numpy as np
 import json
 import torch
 from PIL import Image
+import cv2
 from collections import OrderedDict
 
 from opencood.data_utils import pre_processor, post_processor, augmentor
@@ -268,6 +269,9 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
                 'processed_lidar2': merged_feature_dict2
             })
 
+        bev_map = self.get_dynamic_bev_map(processed_data_dict)
+        processed_data_dict['ego']['label_dict']['gt_dynamic'] = bev_map
+
         if self.kd_flag:
             processed_data_dict['ego'].update({'teacher_processed_lidar': stack_feature_processed})
 
@@ -494,7 +498,33 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
             updated_object_id_stack = [object_id_stack[i] for i in unique_indices]
         else:
             updated_object_id_stack = object_id_stack
-        return object_bbx_center, mask, updated_object_id_stack   
+        return object_bbx_center, mask, updated_object_id_stack
+
+    def get_dynamic_bev_map(self, processed_data_dict):
+        bbx_center = processed_data_dict['ego']['object_bbx_center']
+        bbx_mask = processed_data_dict['ego']['object_bbx_mask']
+        bbxs = box_utils.boxes_to_corners2d(bbx_center[bbx_mask.astype(bool)], 'hwl')
+        lidar_range = self.params['preprocess']['cav_lidar_range']
+        resolution = self.params['preprocess']['bev_map_resolution']
+
+        w = round((lidar_range[3] - lidar_range[0]) / resolution)
+        h = round((lidar_range[4] - lidar_range[1]) / resolution)
+        buf = np.zeros((h, w), dtype=np.uint8)
+        bev_map = np.zeros((h, w), dtype=np.uint8)
+
+        for box in bbxs:
+            box[:, 0] = (box[:, 0] - lidar_range[0]) / resolution
+            box[:, 1] = (box[:, 1] - lidar_range[1]) / resolution
+            buf.fill(0)
+            cv2.fillPoly(buf, [box[:, :2].round().astype(np.int32)], 1, cv2.INTER_LINEAR)
+            bev_map[buf > 0] = 1
+
+        # import matplotlib.pyplot as plt
+        # plt.imshow(bev_map)
+        # plt.savefig('test_bev.png')
+        # plt.close()
+
+        return bev_map
 
     def get_pairwise_transformation(self, base_data_dict, max_cav):
         """

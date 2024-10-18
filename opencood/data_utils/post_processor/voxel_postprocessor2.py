@@ -227,22 +227,30 @@ class VoxelPostprocessor2(BasePostprocessor):
         pos_equal_one = []
         neg_equal_one = []
         targets = []
+        bev_dynamic = []
 
         for i in range(len(label_batch_list)):
             pos_equal_one.append(label_batch_list[i]['pos_equal_one'])
             neg_equal_one.append(label_batch_list[i]['neg_equal_one'])
             targets.append(label_batch_list[i]['targets'])
+            bev_dynamic.append(label_batch_list[i].get('gt_dynamic', None))
 
-        pos_equal_one = \
-            torch.from_numpy(np.array(pos_equal_one))
-        neg_equal_one = \
-            torch.from_numpy(np.array(neg_equal_one))
-        targets = \
-            torch.from_numpy(np.array(targets))
+        pos_equal_one = torch.from_numpy(np.array(pos_equal_one))
+        neg_equal_one = torch.from_numpy(np.array(neg_equal_one))
+        targets = torch.from_numpy(np.array(targets))
 
-        return {'targets': targets,
-                'pos_equal_one': pos_equal_one,
-                'neg_equal_one': neg_equal_one}
+        label_dict = {
+            'targets': targets,
+            'pos_equal_one': pos_equal_one,
+            'neg_equal_one': neg_equal_one
+        }
+
+        if bev_dynamic[0] is not None:
+            label_dict.update({
+                'gt_dynamic':torch.from_numpy(np.array(bev_dynamic))
+            })
+
+        return label_dict
 
     def post_process(self, data_dict, output_dict):
         """
@@ -365,8 +373,18 @@ class VoxelPostprocessor2(BasePostprocessor):
                 pred_box2d_list.append(boxes2d_score)
                 pred_box3d_list.append(projected_boxes3d)
 
+        pred_dbev_list = []
+        for cav_id, cav_content in data_dict.items():
+            if cav_id not in output_dict:
+                continue
+            if 'seg_preds' in output_dict[cav_id]:
+                seg = output_dict[cav_id]['seg_preds'].softmax(dim=1) # b c h w
+                assert seg.shape[0] == 1
+                seg = seg[0]  # c h w
+                pred_dbev_list.append(seg)
+        
         if len(pred_box2d_list) ==0 or len(pred_box3d_list) == 0:
-            return None, None
+            return None, None, pred_dbev_list
         # shape: (N, 5)
         pred_box2d_list = torch.vstack(pred_box2d_list)
         # scores
@@ -405,7 +423,7 @@ class VoxelPostprocessor2(BasePostprocessor):
 
         assert scores.shape[0] == pred_box3d_tensor.shape[0]
 
-        return pred_box3d_tensor, scores
+        return pred_box3d_tensor, scores, pred_dbev_list
 
     @staticmethod
     def delta_to_boxes3d(deltas, anchors):
