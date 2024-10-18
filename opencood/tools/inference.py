@@ -20,7 +20,8 @@ from opencood.tools import train_utils
 # from opencood.tools import train_utils as train_utils
 from opencood.tools import inference_utils as inference_utils
 from opencood.data_utils.datasets import build_dataset
-from opencood.visualization import simple_vis
+from opencood.utils import eval_utils_semantic
+from opencood.visualization import simple_vis, simple_vis_semantic
 from tqdm import tqdm
 from PIL import Image
 import numpy as np
@@ -46,8 +47,10 @@ def test_parser():
                              'in npy file')
     parser.add_argument('--eval_epoch', type=int, default=None,
                         help='Set the checkpoint')
+    parser.add_argument('--inference_single', type=int, default=-1,
+                        help='Inference which agent')
     parser.add_argument('--modality', type=str, default='0,1',
-                        help='Set the checkpoint')
+                        help='Inference with which modality')
     parser.add_argument('--eval_best_epoch', type=bool, default=False,
                         help='Set the checkpoint')
     parser.add_argument('--comm_thre', type=float, default=None,
@@ -76,7 +79,7 @@ def main():
     elif 'dair' in opt.model_dir:
         from opencood.utils import eval_utils_where2comm as eval_utils
         hypes['validate_dir'] = hypes['test_dir']
-        left_hand = False
+        left_hand = True # False
 
     else:
         print(f"The path should contain one of the following strings [opv2v|dair] .")
@@ -100,6 +103,7 @@ def main():
     print('Creating Model')
     model = train_utils.create_model(hypes)
     print(model)
+    # print(aaa)
     total = sum([param.nelement() for param in model.parameters()])
     print("Number of parameter: %d" % (total))
     
@@ -134,6 +138,8 @@ def main():
     total_comm_rates = []
     total_times = 0
     # total_box = []
+    pred_dbev = []
+    result_semantic = []
     for i, batch_data in tqdm(enumerate(data_loader)):
         # if i > 1: continue
         with torch.no_grad():
@@ -159,9 +165,9 @@ def main():
             elif opt.fusion_method == 'intermediate':
                 if 'vqm' in hypes['name']:
                     mode = [int(ele) for ele in opt.modality.split(',')]
-                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset, mode=mode)
+                    pred_box_tensor, pred_score, pred_dbev, gt_box_tensor = inference_utils.inference_early_fusion(batch_data, model, opencood_dataset, modality_index=opt.inference_single, mode=mode)
                 else:
-                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
+                    pred_box_tensor, pred_score, pred_dbev, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
             elif opt.fusion_method == 'no':
                 pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_no_fusion(batch_data, model, opencood_dataset)
             
@@ -356,6 +362,20 @@ def main():
                 """
                 pass
             
+            if pred_dbev:
+                assert 'gt_dynamic' in batch_data['ego']['label_dict']
+                pred = pred_dbev[0].argmax(dim=0).detach().cpu().numpy()
+                gt = batch_data['ego']['label_dict']['gt_dynamic'][0].detach().cpu().numpy()
+                _, _, miou = eval_utils_semantic.mean_iou(pred, gt, num_classes=2, ignore_index=255, nan_to_num=0)
+                result_semantic.append(miou)
+
+                if opt.save_vis:
+                    vis_save_path = os.path.join(opt.model_dir, 'vis_seg')
+                    if not os.path.exists(vis_save_path):
+                        os.makedirs(vis_save_path)
+                    vis_save_path = os.path.join(opt.model_dir, 'vis_seg/seg_%05d.png' % i)
+                    simple_vis_semantic.visualize(pred, gt, vis_save_path)
+            
     # print('total_box: ', sum(total_box)/len(total_box))
     print('average time: ', total_times / len(data_loader))
     if len(total_comm_rates) > 0:
@@ -366,13 +386,16 @@ def main():
         comm_rates = 0
     ap_30, ap_50, ap_70 = eval_utils.eval_final_results(result_stat, opt.model_dir)
 
+    miou_sem = np.sum(result_semantic) / np.count_nonzero(result_semantic)
+    print('Dynamic IoU: ', miou_sem)
+
     if opt.div_range:
         eval_utils.eval_final_results(result_stat_short, opt.model_dir, "short")
         eval_utils.eval_final_results(result_stat_middle, opt.model_dir, "middle")
         eval_utils.eval_final_results(result_stat_long, opt.model_dir, "long")
     
     with open(os.path.join(saved_path, 'result.txt'), 'a+') as f:
-        msg = 'Epoch: {} | AP @0.3: {:.04f} | AP @0.5: {:.04f} | AP @0.7: {:.04f} | comm_rate: {:.06f}\n'.format(epoch_id, ap_30, ap_50, ap_70, comm_rates)
+        msg = 'Epoch: {} | AP @0.3: {:.04f} | AP @0.5: {:.04f} | AP @0.7: {:.04f} | Dynamic IoU: {:.04f} | comm_rate: {:.06f}\n'.format(epoch_id, ap_30, ap_50, ap_70, miou_sem, comm_rates)
         if opt.comm_thre is not None:
             msg = 'Epoch: {} | AP @0.3: {:.04f} | AP @0.5: {:.04f} | AP @0.7: {:.04f} | comm_rate: {:.06f} | comm_thre: {:.04f}\n'.format(epoch_id, ap_30, ap_50, ap_70, comm_rates, opt.comm_thre)
         f.write(msg)
