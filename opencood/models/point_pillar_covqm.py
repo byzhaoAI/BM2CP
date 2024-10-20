@@ -260,7 +260,6 @@ class PointPillarCoVQM(nn.Module):
             
             agent_len += 1
 
-        distribution_loss = nn.L1Loss()
         if training:
             for idx in range(len(record_len)):
                 agent_num = record_len[idx]
@@ -404,7 +403,7 @@ class PointPillarCoVQM(nn.Module):
             # if agent length > 1, the scenario is hetero collaboration, proj exists
             if len(self.agent_types) > 1:
                 features = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':features})['spatial_features_2d']
-        
+
 
         # heter_feature_2d is downsampled 2x
         # add croping information to collaboration module
