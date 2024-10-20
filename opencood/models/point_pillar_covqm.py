@@ -233,6 +233,7 @@ class PointPillarCoVQM(nn.Module):
                 f, _rec_loss, _svd_loss = eval(f"self.{agent_uid}_fusion")(f, mode=mode, training=training)
                 rec_loss = rec_loss + _rec_loss
                 svd_loss = svd_loss + _svd_loss
+                # f = self.minmax_norm(f)
             elif len(f) == 1:
                 f = f[0]
             else:
@@ -260,7 +261,7 @@ class PointPillarCoVQM(nn.Module):
             
             agent_len += 1
 
-        if training:
+        if len(self.agent_types) > 1 and training:
             for idx in range(len(record_len)):
                 agent_num = record_len[idx]
                 origin_feats = origin_features[idx]
