@@ -15,7 +15,7 @@ class CombinedLoss(nn.Module):
             self.losses.append(getattr(module, loss_name)(v))
         self.loss_dict = {}
 
-    def forward(self, output_dict, target_dict):
+    def forward(self, output_dict, target_dict, prefix=''):
         """
         Parameters
         ----------
@@ -24,7 +24,7 @@ class CombinedLoss(nn.Module):
         """
         total_loss = 0
         for loss in self.losses:
-            total_loss += loss(output_dict, target_dict)
+            total_loss += loss(output_dict, target_dict, prefix)
             self.loss_dict.update(loss.loss_dict)
         self.loss_dict['total_loss'] = total_loss
 

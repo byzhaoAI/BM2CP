@@ -103,21 +103,34 @@ def main():
     print('Creating Model')
     model = train_utils.create_model(hypes)
     print(model)
-    # print(aaa)
     total = sum([param.nelement() for param in model.parameters()])
     print("Number of parameter: %d" % (total))
-    
-    # we assume gpu is necessary
-    if torch.cuda.is_available():
-        model.cuda()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print('Loading Model from checkpoint')
     saved_path = opt.model_dir
     epoch_id, model = train_utils.load_model(saved_path, model, opt.eval_epoch, start_from_best=opt.eval_best_epoch)
-        
+
+    # # 查看模型中的所有可训练参数
+    # with open(os.path.join(saved_path, 'check.log'), 'a+') as f:
+    #     for name, param in model.named_parameters():
+    #         msg = f"{name}: {param}"
+    #         f.write(msg)
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # we assume gpu is necessary
+    if torch.cuda.is_available():
+        model.to(device)
+
+    # model.freeze_networks()
+    model.inference_freeze()
+    # # 查看模型中的所有可训练参数
+    # with open(os.path.join(saved_path, 'check.log'), 'a+') as f:
+    #     for name, param in model.named_parameters():
+    #         msg = f"{name}: {param}"
+    #         f.write(msg)
     model.zero_grad()
-    model.eval()
+    # model.eval()
 
     # Create the dictionary for evaluation
     #result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0},

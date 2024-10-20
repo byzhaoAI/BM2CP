@@ -18,7 +18,7 @@ class PointPillarSegLoss(nn.Module):
 
         self.loss_dict = {}
 
-    def forward(self, output_dict, gt_dict):
+    def forward(self, output_dict, gt_dict, prefix=''):
         """
         Perform loss function on the prediction.
 
@@ -36,7 +36,7 @@ class PointPillarSegLoss(nn.Module):
         """
         total_loss = 0
         
-        dynamic_pred = output_dict['seg_preds']
+        dynamic_pred = output_dict['seg_preds{}'.format(prefix)]
         # during training, we only need to compute the ego vehicle's gt loss
         dynamic_gt = (gt_dict['gt_dynamic'] > 0.5).long()
         

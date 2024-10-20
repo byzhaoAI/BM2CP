@@ -46,11 +46,16 @@ def match_loss(fs, loss_type):
         loss = F.mse_loss(f1, f2)
     elif loss_type == 'rmse':
         loss = F.mse_loss(f1, f2) ** 0.5
+    elif loss_type == 'abs':
+        loss = F.l1_loss(f1, f2)
     elif loss_type == 'mfro':
         # Mean of Frobenius norm, normalized by the number of elements
-        loss = torch.mean(torch.frobenius_norm(f1 - f2, dim=-1)) / (float(f1.shape[-1]) ** 0.5)
+        # loss = torch.mean(torch.frobenius_norm(f1 - f2, dim=-1)) / (float(f1.shape[-1]) ** 0.5)
+        loss = torch.mean(torch.frobenius_norm(f1 - f2, dim=1)) / (float(f1.shape[1]) ** 0.5)
     elif loss_type == "cos":
         loss = 1 - F.cosine_similarity(f1, f2, dim=1).mean()
+    elif loss_type == 'kl':
+        loss = F.kl_div(f1, f2)
     else:
         raise ValueError("Unknown loss type: {}".format(loss_type))
 

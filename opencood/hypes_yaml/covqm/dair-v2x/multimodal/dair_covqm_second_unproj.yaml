@@ -1,0 +1,198 @@
+name: dair_covqm_second_unproj
+data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
+root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+
+yaml_parser: "load_hetero_params"
+train_params:
+  batch_size: &batch_size 2 #4 #6
+  epoches: 30
+  eval_freq: 5
+  save_freq: 1
+  max_cav: &max_cav 2
+
+device: &device cuda
+
+
+#comm_range: 100
+noise_setting:
+  add_noise: False
+  args: 
+    pos_std: 0.2
+    rot_std: 0.2
+    pos_mean: 0
+    rot_mean: 0
+
+fusion:
+  core_method: 'LiDARCameraIntermediateFusionDatasetDAIRV3' # 'LiDARCameraIntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset(V2X) supported. 
+  args: 
+    proj_first: &proj_first false
+    clip_pc: false
+    # core_method: 'CameraIntermediateFusionDataset' configs
+    grid_conf: &grid_conf
+      xbound: [-51.2, 51.2, 0.4]   # 限制x方向的范围并划分网格
+      ybound: [-51.2, 51.2, 0.4]   # 限制y方向的范围并划分网格
+      zbound: [-3, 1, 4.0]   # 限制z方向的范围并划分网格
+      ddiscr: [2, 50, 48]
+      mode: 'LID'
+    data_aug_conf: &data_aug_conf
+      resize_lim: [0.7, 0.8]
+      final_dim: [256, 256]
+      rot_lim: [0, 0] #[-3.6, 3.6]
+      H: 256
+      W: 256
+      rand_flip: False
+      bot_pct_lim: [0.0, 0.20]
+      cams: ['camera0', 'camera1', 'camera2', 'camera3']
+      Ncams: 4
+
+# preprocess-related
+preprocess:
+  # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
+  f1:
+    core_method: 'SpVoxelPreprocessor'
+    args:
+      voxel_size: &voxel_size1 [0.4, 0.4, 4]
+      max_points_per_voxel: 32
+      max_voxel_train: 32000
+      max_voxel_test: 70000
+    # lidar range for each individual cav. Format: xyzxyz minmax
+    cav_lidar_range: &cav_lidar [ -51.2, -51.2, -3, 51.2, 51.2, 1 ]
+  f2:
+    core_method: 'SpVoxelPreprocessor'
+    args:
+      voxel_size: &voxel_size2 [0.1, 0.1, 0.1]
+      max_points_per_voxel: 5
+      max_voxel_train: 36000
+      max_voxel_test: 70000
+    # LiDAR range for each individual CAV
+    cav_lidar_range: *cav_lidar
+  cav_lidar_range: *cav_lidar
+  bev_map_resolution: 0.4
+
+data_augment:
+  - NAME: random_world_flip
+    ALONG_AXIS_LIST: [ 'x' ]
+
+  - NAME: random_world_rotation
+    WORLD_ROT_ANGLE: [ -0.78539816, 0.78539816 ]
+
+  - NAME: random_world_scaling
+    WORLD_SCALE_RANGE: [ 0.95, 1.05 ]
+
+# anchor box related
+postprocess:
+  core_method: 'VoxelPostprocessor2' # VoxelPostprocessor, BevPostprocessor supported
+  gt_range: *cav_lidar
+  # dir_args: &dir_args
+  #   dir_offset: 0.7853
+  #   num_bins: 2
+  anchor_args:
+    cav_lidar_range: *cav_lidar
+    l: 4.5
+    w: 2
+    h: 1.56
+    r: &anchor_yaw [0, 90]
+    num: &anchor_num 2
+    feature_stride: 2
+  target_args:
+    pos_threshold: 0.6
+    neg_threshold: 0.45
+    score_threshold: 0.2
+  order: 'hwl' # hwl or lwh
+  max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
+  nms_thresh: 0.15
+  dir_args: &dir_args
+    dir_offset: 0.7853
+    num_bins: 2
+    anchor_yaw: *anchor_yaw
+
+# model related
+model:
+  core_method: point_pillar_covqm
+  
+  args:
+    device: *device
+    lidar_range: *cav_lidar
+    max_cav: *max_cav
+    proj_first: *proj_first
+    supervise_single: False
+    # freeze
+    backbone_fix: false
+
+    fp: False # not needed in homo modality
+    align_first: False # not needed in homo modality
+
+    agents: # provide in order: a1(base), a2, a3, ...
+      a1:
+        m1:
+          method: 'second'
+          voxel_size: *voxel_size2
+          lidar_range: *cav_lidar
+          mean_vfe:
+            feature_points: 4
+          backbone_3d:
+            num_features_out: 32 # 64/2
+        m2:
+          method: 'unproj'
+          grid_conf: *grid_conf
+          data_aug_conf: *data_aug_conf
+          img_downsample: 4
+          bev_dim: 64
+        
+        # model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
+        fusion_channel: 64
+
+
+    shrink_header:
+      use: true
+      input_dim: 384 # 128 * 3
+      dim: [ &out_channels 256 ]
+      kernal_size: [ 3 ]
+      stride: [ 2 ]
+      padding: [ 1 ]
+    
+    compression: 0 # compression rate
+
+    # params for collaborative fusion: where2comm
+    fusion:
+      resnext: true
+      layer_nums: [3, 5, 8]
+      layer_strides: [1, 2, 2]
+      num_filters: [64, 128, 256]
+      upsample_strides: [1, 2, 4]
+      num_upsample_filter: [128, 128, 128]
+      anchor_number: *anchor_num
+
+    # params for prediction
+    outC: *out_channels
+    anchor_number: *anchor_num
+    seg_class: 2
+    seg_upsample: 2
+    dir_args: *dir_args
+
+
+loss:
+  core_method: combined_loss
+  args:
+    point_pillar_seg_loss:
+      d_weights: 75.0
+      d_coe: 2.0
+    point_pillar_loss:
+      cls_weight: 1.0
+      reg: 2.0
+
+
+optimizer:
+  core_method: Adam
+  lr: 0.002
+  args:
+    eps: 1e-10
+    weight_decay: 1e-4
+
+lr_scheduler:
+  core_method: multistep #step, multistep and Exponential support
+  gamma: 0.1
+  step_size: [10, 20]
+

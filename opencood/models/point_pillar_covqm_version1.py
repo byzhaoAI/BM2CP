@@ -8,36 +8,11 @@ from einops import rearrange
 
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
-from opencood.models.heal_modules.pyramid_fuse import PyramidFusion
+from opencood.models.vqm_modules.pyramid_fuse import PyramidFusion
 from opencood.models.vqm_modules.weight_pyramid_fuse import PyramidFusion as SPyramidFusion
 
 from opencood.models.vqm_modules.encodings import build_encoder, ModalFusionBlock
-from opencood.models.heal_modules.base_bev_backbone_resnet import ResNetBEVBackbone
-
-
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
-visualization = False
-tsne_points = []
-tsne_labels = []
-tsne_colors = []
-
-
-def plot_embedding_2D(data, label, colors, title):
-    print(type(data))
-    x_min, x_max = np.min(data, 0), np.max(data, 0)
-    data = (data - x_min) / (x_max - x_min)
-    fig = plt.figure()
-    for i in range(data.shape[0]):
-        plt.text(data[i, 0], data[i, 1], str(label[i]),
-                 color=plt.cm.Set1(colors[i]),
-                 fontdict={'weight': 'bold', 'size': 9})
-    plt.xticks([])
-    plt.yticks([])
-    plt.title(title)
-
-    plt.savefig('tsne.png')
-    quit()
+from opencood.models.vqm_modules.proj import pool_feat, match_loss
 
 
 class PointPillarCoVQM(nn.Module):    
@@ -48,8 +23,7 @@ class PointPillarCoVQM(nn.Module):
         self.max_cav = args['max_cav']
         self.cav_range = args['lidar_range']
         self.unified_score = args['unified_score'] if 'unified_score' in args else False
-        self.freeze_backbone = args['freeze_backbone'] if 'freeze_backbone' in args else False
-
+        self.contrast = args['contrast']
 
         self.agent_types = args['agents']
         if len(self.agent_types) == 1 and 'a1' in self.agent_types:
@@ -87,24 +61,38 @@ class PointPillarCoVQM(nn.Module):
             self.modality_num_list.append(modality_num)
             print(f"Number of parameter {agent_uid}: %d" % (agent_params))
 
+        if 'max_modality_agent_index' in args:
+            self.max_modality_agent_index = args['max_modality_agent_index'] - 1
+        else:
+            self.max_modality_agent_index = np.argmax(self.modality_num_list)
 
-        if len(self.agent_types) > 1:
-            assert 'proj_backbone_args' in args
-            for idx, agent_uid in enumerate(self.agent_types):
-                # if idx == 0: continue
-                setattr(self, f"{agent_uid}_proj", ResNetBEVBackbone(args['proj_backbone_args']))
-        
-            assert 'align_loss' in args
-            if args['align_loss'] == 'abs':
-                self.distribution_loss = nn.L1Loss()
-            elif args['align_loss'] == 'mse':
-                self.distribution_loss = nn.MSELoss()
-            elif args['align_loss'] == 'kl':
-                self.distribution_loss = nn.KLDivLoss(reduction='sum')
-            elif args['align_loss'] == 'cos':
-                self.distribution_loss = nn.CosineSimilarity(dim=0)
+
+        self.fp = args['fp'] if 'fp' in args else True
+        self.align_first = args['align_first'] if 'align_first' in args else False
+        if len(self.agent_types) <= 1:
+            self.fp = False
+        if not self.fp:
+            print('No FP is used.')
+            self.align_block = None
+        else:
+            print(f'FP is used, and align first is {self.align_first}')
+            if self.align_first:
+                for idx, agent_uid in enumerate(self.agent_types):
+                    if idx != self.max_modality_agent_index:
+                        setattr(
+                            self,
+                            f"{agent_uid}_proj",
+                            nn.Embedding(1, args['fusion']['num_filters'][0])
+                        )
+                self.align_block = None
             else:
-                raise
+                # add single supervision head
+                self.align_block = AlignBlock(
+                    model_cfg=args['fusion'],
+                    agent_types=self.agent_types, 
+                    max_modality_agent_index=self.max_modality_agent_index
+                )
+        # print(self.align_block)
 
         self.shrink_flag = False
         if 'shrink_header' in args:
@@ -113,6 +101,10 @@ class PointPillarCoVQM(nn.Module):
             print("Number of parameter shrink_conv: %d" % (sum([param.nelement() for param in self.shrink_conv.parameters()])))
         
 
+        # if self.unified_score:
+        #     self.pyramid_backbone = SPyramidFusion(args['fusion'], self.max_modality_agent_index, self.agent_types, self.fp, not self.align_first)
+        # else:
+        #     self.pyramid_backbone = PyramidFusion(args['fusion'], self.max_modality_agent_index, self.agent_types, self.fp, not self.align_first)
         if self.unified_score:
             self.pyramid_backbone = SPyramidFusion(args['fusion'])
         else:
@@ -126,35 +118,14 @@ class PointPillarCoVQM(nn.Module):
         if 'seg_upsample' in args:
             self.dynamic_head = nn.ConvTranspose2d(args['outC'], args['seg_class'], kernel_size=2, stride=2, padding=0)
         else:
-            self.dynamic_head = None # nn.Conv2d(args['outC'], args['seg_class'], kernel_size=3, padding=1)
+            self.dynamic_head = nn.Conv2d(args['outC'], args['seg_class'], kernel_size=3, padding=1)
 
-    def freeze_networks(self, net):
+    def freeze_backbone(self, net):
         for p in net.parameters():
             p.requires_grad = False
-    
-    def inference_freeze(self):
-        # if self.freeze_backbone:
-        #     freeze_list = [self.shrink_conv, self.pyramid_backbone, self.cls_head, self.reg_head, self.dir_head]
-        #     if self.dynamic_head is not None:
-        #         freeze_list.append(self.dynamic_head)
-        #     for net in freeze_list:
-        #         self.freeze_networks(net)
-        #     print('backbone network freezed.')
+
+    def update_model(self, shrink_conv, backbone, cls_head, reg_head, dir_head, dynamic_head, agent_encoders={}, freeze_backbone=False):
         
-        # for agent_idx, agent_uid in enumerate(self.agent_types):
-        #     for modality_uid in self.agent_types[agent_uid]:
-        #         if modality_uid in ['origin_hypes', 'model_path', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
-        #         if eval(f"self.freeze_{agent_uid}_{modality_uid}"):
-        #             self.freeze_networks(eval(f"self.{agent_uid}_{modality_uid}"))
-        #             print(f'{agent_uid}_{modality_uid} net freezed.')
-
-        #     if self.modality_num_list[agent_idx] > 1:
-        #         if eval(f"self.freeze_{agent_uid}_fusion"):
-        #             self.freeze_networks(eval(f"self.{agent_uid}_fusion"))
-        #             print(f'{agent_uid}_fusion net freezed.')
-        self.freeze_networks(self)
-
-    def update_model(self, shrink_conv, backbone, cls_head, reg_head, dir_head, dynamic_head, agent_encoders={}):
         self.shrink_conv = shrink_conv
         self.pyramid_backbone = backbone
         self.cls_head = cls_head
@@ -165,12 +136,10 @@ class PointPillarCoVQM(nn.Module):
         if dynamic_head is not None:
             self.dynamic_head = dynamic_head
             freeze_list.append(self.dynamic_head)
-        else:
-            self.dynamic_head = None
         
-        if self.freeze_backbone:
+        if freeze_backbone:
             for net in freeze_list:
-                self.freeze_networks(net)
+                self.freeze_backbone(net)
             print('backbone network freezed.')
         
         for agent_idx, agent_uid in enumerate(self.agent_types):
@@ -181,7 +150,7 @@ class PointPillarCoVQM(nn.Module):
                     encoder = agent_encoders[agent_uid]
                     assert f"{agent_uid}_{modality_uid}" in encoder.keys()
                     setattr(self, f"{agent_uid}_{modality_uid}", encoder[f"{agent_uid}_{modality_uid}"])
-                    self.freeze_networks(eval(f"self.{agent_uid}_{modality_uid}"))
+                    self.freeze_backbone(eval(f"self.{agent_uid}_{modality_uid}"))
                     print(f'{agent_uid}_{modality_uid} net freezed.')
 
             if self.modality_num_list[agent_idx] > 1:
@@ -189,12 +158,16 @@ class PointPillarCoVQM(nn.Module):
                     print(encoder.keys())
                     assert 'fusion' in encoder.keys()
                     setattr(self, f"{agent_uid}_fusion", encoder['fusion'])
-                    self.freeze_networks(eval(f"self.{agent_uid}_fusion"))
+                    self.freeze_backbone(eval(f"self.{agent_uid}_fusion"))
                     print(f'{agent_uid}_fusion net freezed.')
 
-    def regroup(self, x, record_len, select_idx):
-        # if select_idx != 0:
-        #     x = eval(f"self.a{select_idx+1}_proj")({'spatial_features':x})['spatial_features_2d']
+    def regroup(self, x, record_len, select_idx, unsqueeze=False):
+        if self.fp and self.align_first:
+            if select_idx != self.max_modality_agent_index:
+                x = eval(f"self.a{select_idx+1}_proj").weight.unsqueeze(-1).unsqueeze(-1) * x
+        
+        if unsqueeze:
+            x = x.unsqueeze(1)
 
         split_x = torch.tensor_split(x, torch.cumsum(record_len, dim=0)[:-1].cpu())
         select_x, select_ego = [], []
@@ -214,13 +187,11 @@ class PointPillarCoVQM(nn.Module):
         record_len = data_dict['record_len']
         rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
         
-
         agent_len = 0
-        origin_features = []
         features = []
         ego_features = []
         # process raw data to get feature for each agent
-        for agent_idx, agent_uid in enumerate(self.agent_types):
+        for agent_uid in self.agent_types:
             f = []
             for modality_uid in self.agent_types[agent_uid]:
                 if modality_uid in ['origin_hypes', 'model_path', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
@@ -238,13 +209,9 @@ class PointPillarCoVQM(nn.Module):
             else:
                 raise
 
-
             if len(self.agent_types) == 1:
                 features = f
             else:
-                f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
-                origin_features.append(f)
-                
                 select_x, select_ego = self.regroup(f, record_len, select_idx=agent_len)
                 if features:
                     for i in range(len(record_len)):
@@ -252,76 +219,107 @@ class PointPillarCoVQM(nn.Module):
                             features[i] = torch.cat([features[i], select_x[i]], dim=0)
                 else:
                     features = select_x
-                # if ego_features:
-                #     for i in range(len(record_len)):
-                #         ego_features[i] = torch.cat([ego_features[i], select_ego[i]], dim=0)
-                # else:
-                #     ego_features = select_ego
+                if ego_features:
+                    for i in range(len(record_len)):
+                        ego_features[i] = torch.cat([ego_features[i], select_ego[i]], dim=0)
+                else:
+                    ego_features = select_ego
             
             agent_len += 1
 
-        distribution_loss = nn.L1Loss()
-        if training:
-            for idx in range(len(record_len)):
-                agent_num = record_len[idx]
-                origin_feats = origin_features[idx]
-
-                for ith_agent in range(agent_num-1):
-                    bfp_loss = bfp_loss + self.distribution_loss(
-                        origin_feats[ith_agent],
-                        origin_feats[(ith_agent+1) % agent_num]
-                    )
-
-        # visualization of shared-specific fts here
-        if visualization:
-            # collecting enough data points
-            # tsne_2D = TSNE(n_components=2, random_state=0)
-            tsne_2D = TSNE(n_components=2, init='pca', random_state=0)
-            vis_ft = []
-            vis_ft_clr = []
-            
-            # if ego_features:
-            #     assert len(ego_features[0]) == 2
-            #     for idx, ft in enumerate(ego_features[0]):
-            #         vis_ft.append(ft)
-            #         vis_ft_clr.append(idx)
-
-            #     vis_ft = torch.stack(vis_ft)
-            #     vis_ft = vis_ft.view(vis_ft.shape[0], -1)
-
-            #     tsne_points.append(vis_ft.cpu().detach().numpy())
-            #     tsne_colors.append(vis_ft_clr)
-            #     tsne_labels.append(['x', 'o'])
-            # else:
-            #     assert features.shape[0] == 2
-            #     vis_ft = features.view(features.shape[0], -1)
-            #     tsne_points.append(vis_ft.cpu().detach().numpy())
-            #     tsne_colors.append([0, 1])
-            #     tsne_labels.append(['x', 'o'])
-            
-            assert len(origin_features) == 2
-            for idx, ft in enumerate(origin_features):
-                vis_ft.append(ft[0])
-                vis_ft_clr.append(idx)
-
-            vis_ft = torch.stack(vis_ft)
-            vis_ft = vis_ft.view(vis_ft.shape[0], -1)
-
-            tsne_points.append(vis_ft.cpu().detach().numpy())
-            tsne_colors.append(vis_ft_clr)
-            tsne_labels.append(['x', 'o'])
-
-            if len(tsne_points) == 500:  # actual visualization
-                vis_tsne_points = np.concatenate(tsne_points)
-                vis_tsne_labels = np.concatenate(tsne_labels)
-                vis_tsne_colors = np.concatenate(tsne_colors)
-                vis_tsne_2D = tsne_2D.fit_transform(vis_tsne_points)
-                
-                plot_embedding_2D(vis_tsne_2D, vis_tsne_labels, vis_tsne_colors, 't-SNE of Features')
-                # plt.show()
-
         if isinstance(features, list):
             features = torch.cat(features, dim=0)
+
+
+        # # 检查是否包含 NaN, Inf
+        # print("Tensor contains NaN:", torch.isnan(features).any().item())
+        # print("Tensor contains Inf:", torch.isinf(features).any().item())
+
+        # # back forward projection loss
+        # if self.fp and training:
+        #     for idx in range(len(record_len)):
+        #         agent_num = record_len[idx]
+        #         ego_feats = ego_features[idx]
+
+        #         if self.align_first:
+        #             for ego_ith_agent in range(agent_num):
+        #                 bfp_loss = bfp_loss + match_loss(
+        #                     pool_feat(
+        #                         f1=ego_feats[ego_ith_agent].unsqueeze(0),
+        #                         f2=ego_feats[(ego_ith_agent+1) % ego_feats.shape[0]].unsqueeze(0), 
+        #                         pool_dim='hw',
+        #                         normalize_feat=True
+        #                     ), 
+        #                     loss_type='mfro'
+        #                 )
+                
+        #             ego_feats_list = self.pyramid_backbone.get_multiscale_feature(ego_feats)
+        #             for level in range(self.pyramid_backbone.num_levels):
+        #                 level_features = ego_feats_list[level]
+        #                 for ego_ith_agent in range(agent_num):
+        #                     f1 = level_features[ego_ith_agent:ego_ith_agent+1]
+        #                     if ego_ith_agent != self.max_modality_agent_index:
+        #                         f1 = eval(f"self.align_block.a{ego_ith_agent+1}_backward_proj{level}").weight.unsqueeze(-1).unsqueeze(-1) * f1
+                            
+        #                     if ego_ith_agent + 1 == agent_num:
+        #                         f2 = level_features[0:1]
+        #                         if self.max_modality_agent_index != 0:
+        #                             f2 = eval(f"self.align_block.a1_backward_proj{level}").weight.unsqueeze(-1).unsqueeze(-1) * f2
+        #                     else:
+        #                         f2 = level_features[ego_ith_agent+1:ego_ith_agent+2]
+        #                         if ego_ith_agent + 1 != self.max_modality_agent_index:
+        #                             f2 = eval(f"self.align_block.a{ego_ith_agent+2}_backward_proj{level}").weight.unsqueeze(-1).unsqueeze(-1) * f2
+                            
+        #                     bfp_loss = bfp_loss + match_loss(
+        #                         pool_feat(
+        #                             f1=f1,
+        #                             f2=f2,
+        #                             pool_dim='hw',
+        #                             normalize_feat=True
+        #                         ),
+        #                         loss_type='mfro' # abs/mse/mfro/cos
+        #                     )
+                            
+        if self.fp and training:
+            for idx in range(len(record_len)):
+                agent_num = record_len[idx]
+                ego_feats = ego_features[idx]
+
+                if self.align_first:
+                    for ego_ith_agent in range(agent_num):
+                        bfp_loss = bfp_loss + compute_hetero_loss(
+                            f1=ego_feats[ego_ith_agent].unsqueeze(0),
+                            f2=ego_feats[(ego_ith_agent+1) % ego_feats.shape[0]].unsqueeze(0),
+                            loss_type='mfro'
+                        )
+                
+                    ego_feats_list = self.pyramid_backbone.get_multiscale_feature(ego_feats)
+                    for level in range(self.pyramid_backbone.num_levels):
+                        level_features = ego_feats_list[level]
+                        for ego_ith_agent in range(agent_num):
+                            f1 = level_features[ego_ith_agent:ego_ith_agent+1]
+                            if ego_ith_agent != self.max_modality_agent_index:
+                                f1 = eval(f"self.align_block.a{ego_ith_agent+1}_backward_proj{level}").weight.unsqueeze(-1).unsqueeze(-1) * f1
+                            
+                            if ego_ith_agent + 1 == agent_num:
+                                f2 = level_features[0:1]
+                                if self.max_modality_agent_index != 0:
+                                    f2 = eval(f"self.align_block.a1_backward_proj{level}").weight.unsqueeze(-1).unsqueeze(-1) * f2
+                            else:
+                                f2 = level_features[ego_ith_agent+1:ego_ith_agent+2]
+                                if ego_ith_agent + 1 != self.max_modality_agent_index:
+                                    f2 = eval(f"self.align_block.a{ego_ith_agent+2}_backward_proj{level}").weight.unsqueeze(-1).unsqueeze(-1) * f2
+                            
+                            bfp_loss = bfp_loss + match_loss(
+                                pool_feat(
+                                    f1=f1,
+                                    f2=f2,
+                                    pool_dim='hw',
+                                    normalize_feat=True
+                                ),
+                                loss_type='mfro' # abs/mse/mfro/cos
+                            )
+
 
         """For feature transformation"""
         self.H = (self.cav_range[4] - self.cav_range[1])
@@ -346,7 +344,11 @@ class PointPillarCoVQM(nn.Module):
             fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
                                                     features,
                                                     record_len, 
-                                                    affine_matrix
+                                                    affine_matrix,
+                                                    self.align_block, 
+                                                    self.fp, 
+                                                    not self.align_first, 
+                                                    self.max_modality_agent_index
                                                 )
 
         if self.shrink_flag:
@@ -373,6 +375,18 @@ class PointPillarCoVQM(nn.Module):
             'rm': reg_preds,
         })
 
+        if self.max_modality_agent_index != 0:
+        # if True:
+            single_dict = self.inference_single(data_dict, output_agent_index=0)
+        
+            output_dict.update({
+                # 'cls_preds': cls_preds,
+                # 'reg_preds': reg_preds,
+                # 'dir_preds': dir_preds,
+                'seg_preds_single': single_dict['seg_preds'],
+                'psm_single': single_dict['psm'],
+                'rm_single': single_dict['rm'],
+            })
         return output_dict
 
     def inference_single(self, data_dict, output_agent_index):
@@ -383,7 +397,7 @@ class PointPillarCoVQM(nn.Module):
         features = []
         # process raw data to get feature for each agent
         for agent_idx, agent_uid in enumerate(self.agent_types):
-            if agent_idx != output_agent_index: continue
+            if output_agent_index != agent_idx: continue
 
             f = []
             for modality_uid in self.agent_types[agent_uid]:
@@ -394,21 +408,29 @@ class PointPillarCoVQM(nn.Module):
                 ))
 
             if len(f) > 1:
-                f, _, _ = eval(f"self.{agent_uid}_fusion")(f, mode=[0,1], training=False)
+                f, _rec_loss, _svd_loss = eval(f"self.{agent_uid}_fusion")(f, mode=[0,1], training=False)
+                # rec_loss = rec_loss + _rec_loss
+                # svd_loss = svd_loss + _svd_loss
             elif len(f) == 1:
                 f = f[0]
             else:
                 raise
-            # batch_size=1 in inference, select the ego as single feature
-            features = f[0:1]
-            # if agent length > 1, the scenario is hetero collaboration, proj exists
-            if len(self.agent_types) > 1:
-                features = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':features})['spatial_features_2d']
-        
+            
+            # select the ego as single feature
+            if len(record_len) > 1:
+                features = torch.cat(self.regroup(f, record_len, 0)[1], dim=0)
+            else:
+                features = f[0:1]
+
+        """For feature transformation"""
+        self.H = (self.cav_range[4] - self.cav_range[1])
+        self.W = (self.cav_range[3] - self.cav_range[0])
+        self.fake_voxel_size = 1
 
         # heter_feature_2d is downsampled 2x
         # add croping information to collaboration module
-        fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features)
+        align_block = None if output_agent_index == self.max_modality_agent_index else self.align_block
+        fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features, output_agent_index, align_block)
 
         if self.shrink_flag:
             fused_feature = self.shrink_conv(fused_feature)
@@ -435,6 +457,23 @@ class PointPillarCoVQM(nn.Module):
         })
 
         return output_dict
+
+
+class AlignBlock(nn.Module):
+    def __init__(self, model_cfg, agent_types, max_modality_agent_index):
+        super(AlignBlock, self).__init__()
+        # add single supervision head
+        for i in range(len(model_cfg['layer_nums'])):
+            for agent_idx, agent_uid in enumerate(agent_types):
+                if agent_idx != max_modality_agent_index:
+                    setattr(
+                        self,
+                        f"{agent_uid}_backward_proj{i}",
+                        nn.Embedding(1, model_cfg["num_filters"][i]),
+                    )
+    
+    # def forward(self, x):
+    #     return x
 
 
 def normalize_pairwise_tfm(pairwise_t_matrix, H, W, discrete_ratio, downsample_rate=1):

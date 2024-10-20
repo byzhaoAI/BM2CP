@@ -107,7 +107,7 @@ def load_saved_model(saved_path, model, epoch=None):
         return initial_epoch, model
 
 
-def load_model(saved_path, model, epoch=None, start_from_best=True):
+def load_model(saved_path, model, epoch=None, start_from_best=False):
     """
     Load saved model if exiseted
 
