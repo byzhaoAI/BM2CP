@@ -222,7 +222,9 @@ def main():
                 #         final_loss = final_loss + unit_loss
                 #         collect_unit_loss.append(unit_loss.item())
                 if hypes['loss']['core_method'] in ['point_pillar_loss', 'combined_loss']:
-                    final_loss = final_loss + output_dict['rec_loss'] + output_dict['svd_loss'] + output_dict['bfp_loss']
+                    final_loss = final_loss + output_dict['rec_loss'] + output_dict['bfp_loss']
+                    if output_dict['svd_loss'] < 1:
+                        final_loss = final_loss + output_dict['svd_loss']
                     # if model.max_modality_agent_index != 0:
                     #     single_loss = criterion(output_dict, batch_data['ego']['label_dict'], prefix='_single')
                     #     collect_unit_loss.append(single_loss.item())
