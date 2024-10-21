@@ -38,6 +38,8 @@ def test_parser():
                         help='no, no_w_uncertainty, late, early or intermediate')
     parser.add_argument('--div_range', type=bool, default=False,
                         help='evaluate short/middle/long range results. Only for V2v4real dataset.')
+    parser.add_argument('--feat_vis', type=bool, default=False,
+                        help='save how many numbers of visualization result?')
     parser.add_argument('--save_vis', type=bool, default=False,
                         help='save how many numbers of visualization result?')
     parser.add_argument('--save_vis_n', type=int, default=10,
@@ -158,6 +160,10 @@ def main():
         with torch.no_grad():
             batch_data = train_utils.to_device(batch_data, device)
 
+            if opt.feat_vis:
+                cav_content = batch_data['ego']
+                output = model(cav_content, visualization=True)
+                continue
             # macs, params = profile(model, inputs=(batch_data['ego'], ))
             # # 格式化输出
             # macs, params = clever_format([macs, params], "%.3f")

@@ -17,7 +17,7 @@ from opencood.models.heal_modules.base_bev_backbone_resnet import ResNetBEVBackb
 
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
-visualization = False
+# visualization = False
 tsne_points = []
 tsne_labels = []
 tsne_colors = []
@@ -209,7 +209,7 @@ class PointPillarCoVQM(nn.Module):
     def minmax_norm(self, data):
         return (data - data.min()) / (data.max() - data.min() + 1e-8) * 2 - 1
 
-    def forward(self, data_dict, mode=[0,1], training=False):
+    def forward(self, data_dict, mode=[0,1], training=False, visualization=False):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
         rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
@@ -217,6 +217,8 @@ class PointPillarCoVQM(nn.Module):
 
         agent_len = 0
         origin_features = []
+        proj_features = []
+
         features = []
         ego_features = []
         # process raw data to get feature for each agent
@@ -240,12 +242,12 @@ class PointPillarCoVQM(nn.Module):
                 raise
 
 
+            origin_features.append(f)
             if len(self.agent_types) == 1:
                 features = f
             else:
                 f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
-                origin_features.append(f)
-                
+                proj_features.append(f)
                 select_x, select_ego = self.regroup(f, record_len, select_idx=agent_len)
                 if features:
                     for i in range(len(record_len)):
@@ -277,6 +279,8 @@ class PointPillarCoVQM(nn.Module):
             # collecting enough data points
             # tsne_2D = TSNE(n_components=2, random_state=0)
             tsne_2D = TSNE(n_components=2, init='pca', random_state=0)
+            symbols = ['x', 'o', '+', '*', '=', '/']
+            
             vis_ft = []
             vis_ft_clr = []
             
@@ -298,20 +302,33 @@ class PointPillarCoVQM(nn.Module):
             #     tsne_points.append(vis_ft.cpu().detach().numpy())
             #     tsne_colors.append([0, 1])
             #     tsne_labels.append(['x', 'o'])
+
+            # only 1 type agent
+            if len(self.agent_types) > 1:
+                assert len(origin_features) > 1
+                assert len(proj_features) > 1                
+
+                for idx, ft in enumerate(origin_features):
+                    vis_ft.append(ft[0])
+                    vis_ft_clr.append(idx)
+
+                for idx, ft in enumerate(proj_features):
+                    vis_ft.append(ft[0])
+                    vis_ft_clr.append(idx+len(origin_features))
             
-            assert len(origin_features) == 2
-            for idx, ft in enumerate(origin_features):
-                vis_ft.append(ft[0])
-                vis_ft_clr.append(idx)
+            else:
+                assert len(origin_features) == 1
+                
+                vis_ft.append(origin_features[0])
+                vis_ft_clr.append(0)
 
             vis_ft = torch.stack(vis_ft)
             vis_ft = vis_ft.view(vis_ft.shape[0], -1)
-
             tsne_points.append(vis_ft.cpu().detach().numpy())
             tsne_colors.append(vis_ft_clr)
-            tsne_labels.append(['x', 'o'])
+            tsne_labels.append(symbols[:len(vis_ft)])
 
-            if len(tsne_points) == 500:  # actual visualization
+            if len(tsne_points) == 250:  # actual visualization
                 vis_tsne_points = np.concatenate(tsne_points)
                 vis_tsne_labels = np.concatenate(tsne_labels)
                 vis_tsne_colors = np.concatenate(tsne_colors)
