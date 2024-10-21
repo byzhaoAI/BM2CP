@@ -41,41 +41,45 @@ def normalize_pairwise_tfm(pairwise_t_matrix, H, W, discrete_ratio, downsample_r
 
 
 class MultiModalFusion(nn.Module):
-    def __init__(self, dim, ratio=0.8, num_layers=3, threshold=0.1):
+    def __init__(self, dim, mode='implicit', ratio=0.8, num_layers=3, threshold=0.5):
         super().__init__()
         self.dim =  256
         self.threshold = threshold
         self.ratio = ratio
-        self.autoencoder = Autoencoder()
-        self.rec_loss = nn.MSELoss()
-        self.abs_loss = nn.L1Loss()
+        self.mode = mode
+        if self.mode == 'implicit':
+            self.value_func = nn.Sequential(
+                nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.AdaptiveAvgPool2d(1),
+                nn.Sigmoid(),
+            )
 
-        self.value_func = nn.Sequential(
-            nn.Conv2d(dim * 2, 1, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Sigmoid(),
-        )
+        else:
+            self.autoencoder = Autoencoder()
+            self.rec_loss = nn.MSELoss()
+            self.abs_loss = nn.L1Loss()
 
-        self.s_func = nn.Sequential(
-            nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            # nn.Sigmoid(),
-            nn.AdaptiveAvgPool2d((128, 128)),
-        )
+            self.s_func = nn.Sequential(
+                nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                # nn.Sigmoid(),
+                nn.AdaptiveAvgPool2d((128, 128)),
+            )
 
-        self.v_func = nn.Sequential(
-            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            # nn.Sigmoid(),
-            nn.AdaptiveAvgPool2d((1, 1)),
-        )
+            self.v_func = nn.Sequential(
+                nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                # nn.Sigmoid(),
+                nn.AdaptiveAvgPool2d((1, 1)),
+            )
 
-        self.d_func = nn.Sequential(
-            nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            # nn.Sigmoid(),
-            nn.AdaptiveAvgPool2d((256, 256)),
-        )
+            self.d_func = nn.Sequential(
+                nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                # nn.Sigmoid(),
+                nn.AdaptiveAvgPool2d((256, 256)),
+            )
 
         self.gc = GraphConstructor(dim=dim, alpha=3)
         self.num_layers = num_layers
@@ -103,20 +107,29 @@ class MultiModalFusion(nn.Module):
         B, M, C, H, W = con_feat.shape
         con_feat = rearrange(con_feat, 'b m c h w -> (b m) c h w')
 
-        feat_mid, feat_rec = self.autoencoder(con_feat)
-        # b*c*c, b*c, b*n*n
-        feat_v = self.v_func(feat_mid).flatten(1)
+        auto_enc_loss, svd_loss = torch.tensor(0.0, requires_grad=True).to(con_feat.device), torch.tensor(0.0, requires_grad=True).to(con_feat.device)
+        if self.mode == 'implicit':
+            feat_v = self.value_func(con_feat).squeeze()
         
-        auto_enc_loss, svd_loss = 0, 0
-        if training:
-            feat_s, feat_d = self.s_func(feat_mid).squeeze(1), self.d_func(feat_mid).squeeze(1)
-            # construct diag matrix
-            diag_v = torch.zeros((B*M, feat_s.shape[1], feat_d.shape[1])).to(con_feat.device)
-            diag_v[:, :min(feat_s.shape[1], feat_d.shape[1]), :min(feat_s.shape[1], feat_d.shape[1])] = torch.diag_embed(feat_v)
-            # recover matrix
-            rec_feat_mid = torch.bmm(feat_s, torch.bmm(diag_v, feat_d))
-            auto_enc_loss = self.rec_loss(con_feat, feat_rec)
-            svd_loss = self.abs_loss(feat_mid.flatten(2), rec_feat_mid)
+        else:
+            feat_mid, feat_rec = self.autoencoder(con_feat)
+            # b*c*c, b*c, b*n*n
+            feat_v = self.v_func(feat_mid).flatten(1)
+            
+            if training:
+                feat_s, feat_d = self.s_func(feat_mid).squeeze(1), self.d_func(feat_mid).squeeze(1)
+                # construct diag matrix
+                diag_v = torch.zeros((B*M, feat_s.shape[1], feat_d.shape[1])).to(con_feat.device)
+                diag_v[:, :min(feat_s.shape[1], feat_d.shape[1]), :min(feat_s.shape[1], feat_d.shape[1])] = torch.diag_embed(feat_v)
+                # recover matrix
+                rec_feat_mid = torch.bmm(feat_s, torch.bmm(diag_v, feat_d))
+                auto_enc_loss = self.rec_loss(con_feat, feat_rec)
+                svd_loss = self.abs_loss(feat_mid.flatten(2), rec_feat_mid)
+        
+        # count principal components in channel dimension
+        feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
+        counts = torch.sum(feat_v > self.threshold, dim=-1)
+        best_indices = torch.argmax(counts, dim=-1)
 
         con_feat = rearrange(con_feat, '(b m) c h w -> b m c h w', b=B, m=M)
         x = con_feat
@@ -136,10 +149,6 @@ class MultiModalFusion(nn.Module):
         con_feat = self.conv(con_feat)
         con_feat = con_feat.view(B, M, C, H, W)
         
-        # count principal components in channel dimension
-        feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
-        counts = torch.sum(feat_v > self.threshold, dim=-1)
-        best_indices = torch.argmax(counts, dim=-1)
         fused_feat = []
         for idx, index in enumerate(best_indices):
             fused_feat.append(con_feat[idx,index,:,:,:])
