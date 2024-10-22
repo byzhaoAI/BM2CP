@@ -9,13 +9,15 @@ import random
 import math
 from collections import OrderedDict
 import os
-import opencood.data_utils.post_processor as post_processor
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from opencood.data_utils import pre_processor, post_processor, augmentor
-from opencood.utils import box_utils
+from PIL import Image
+import cv2
 import json
+
+from opencood.data_utils import pre_processor, post_processor, augmentor
+from opencood.utils import box_utils, transformation_utils, camera_utils
 from opencood.utils.pcd_utils import \
     mask_points_by_range, mask_ego_points, shuffle_points, \
     downsample_lidar_minimum
@@ -27,10 +29,57 @@ from opencood.utils.transformation_utils import x1_to_x2
 from opencood.utils.common_utils import read_json
 from opencood.utils.pose_utils import add_noise_data_dict
 
+
 def load_json(path):
     with open(path, mode="r") as f:
         data = json.load(f)
     return data
+
+
+def merge_features_to_dict(processed_feature_list, merge=None):
+    """
+    Merge the preprocessed features from different cavs to the same
+    dictionary.
+
+    Parameters
+    ----------
+    processed_feature_list : list
+        A list of dictionary containing all processed features from
+        different cavs.
+    merge : "stack" or "cat". used for images
+
+    Returns
+    -------
+    merged_feature_dict: dict
+        key: feature names, value: list of features.
+    """
+
+    merged_feature_dict = OrderedDict()
+
+    for i in range(len(processed_feature_list)):
+        for feature_name, feature in processed_feature_list[i].items():
+
+            if feature_name not in merged_feature_dict:
+                merged_feature_dict[feature_name] = []
+            if isinstance(feature, list):
+                merged_feature_dict[feature_name] += feature
+            else:
+                merged_feature_dict[feature_name].append(feature) # merged_feature_dict['coords'] = [f1,f2,f3,f4]
+
+    # stack them
+    # it usually happens when merging cavs images -> v.shape = [N, Ncam, C, H, W]
+    # cat them
+    # it usually happens when merging batches cav images -> v is a list [(N1+N2+...Nn, Ncam, C, H, W))]
+    if merge=='stack': 
+        for feature_name, features in merged_feature_dict.items():
+            merged_feature_dict[feature_name] = torch.stack(features, dim=0)
+    elif merge=='cat':
+        for feature_name, features in merged_feature_dict.items():
+            merged_feature_dict[feature_name] = torch.cat(features, dim=0)
+    
+    return merged_feature_dict
+
+
 class LateFusionDatasetDAIR(Dataset):
     """
     This class is for intermediate fusion where each vehicle transmit the
@@ -75,6 +124,8 @@ class LateFusionDatasetDAIR(Dataset):
             self.select_keypoint = params['select_kp']
         else:
             self.select_keypoint = None
+
+        self.data_aug_conf = params["fusion"]["args"]["data_aug_conf"]
 
         if self.train:
             split_dir = params['root_dir']
@@ -410,6 +461,8 @@ class LateFusionDatasetDAIR(Dataset):
         object_bbx_center = []
         object_bbx_mask = []
         processed_lidar_list = []
+        processed_lidar_list2 = []
+        image_inputs_list = []
         label_dict_list = []
 
         if self.visualize:
@@ -420,6 +473,9 @@ class LateFusionDatasetDAIR(Dataset):
             object_bbx_center.append(ego_dict['object_bbx_center'])
             object_bbx_mask.append(ego_dict['object_bbx_mask'])
             processed_lidar_list.append(ego_dict['processed_lidar'])
+            if 'processed_lidar2' in ego_dict:
+                processed_lidar_list2.append(ego_dict['processed_lidar2'])
+            image_inputs_list.append(ego_dict['image_inputs'])
             label_dict_list.append(ego_dict['label_dict'])
 
             if self.visualize:
@@ -429,13 +485,18 @@ class LateFusionDatasetDAIR(Dataset):
         object_bbx_center = torch.from_numpy(np.array(object_bbx_center))
         object_bbx_mask = torch.from_numpy(np.array(object_bbx_mask))
 
-        processed_lidar_torch_dict = \
-            self.pre_processor.collate_batch(processed_lidar_list)
+        processed_lidar_torch_dict = self.pre_processor.collate_batch(processed_lidar_list)
+        if processed_lidar_list2:
+            processed_lidar_torch_dict2 = self.pre_processor.collate_batch(processed_lidar_list2)
+        merged_image_inputs_dict = merge_features_to_dict(image_inputs_list, merge='stack')
+        
         label_torch_dict = \
             self.post_processor.collate_batch(label_dict_list)
         output_dict['ego'].update({'object_bbx_center': object_bbx_center,
                                    'object_bbx_mask': object_bbx_mask,
                                    'processed_lidar': processed_lidar_torch_dict,
+                                   'processed_lidar2': processed_lidar_torch_dict2,
+                                   'image_inputs': merged_image_inputs_dict,
                                    'anchor_box': torch.from_numpy(ego_dict['anchor_box']),
                                    'label_dict': label_torch_dict})
         if self.visualize:
@@ -503,9 +564,9 @@ class LateFusionDatasetDAIR(Dataset):
                     projected_lidar_list.append(projected_lidar)
 
             # processed lidar dictionary
-            processed_lidar_torch_dict = \
-                self.pre_processor.collate_batch(
-                    [cav_content['processed_lidar']])
+            processed_lidar_torch_dict = self.pre_processor.collate_batch([cav_content['processed_lidar']])
+            merged_image_inputs_dict = merge_features_to_dict([cav_content['image_inputs']], merge='stack')
+
             # label dictionary
             label_torch_dict = \
                 self.post_processor.collate_batch([cav_content['label_dict']])
@@ -521,10 +582,16 @@ class LateFusionDatasetDAIR(Dataset):
             output_dict[cav_id].update({'object_bbx_center': object_bbx_center,
                                         'object_bbx_mask': object_bbx_mask,
                                         'processed_lidar': processed_lidar_torch_dict,
+                                        'image_inputs': merged_image_inputs_dict,
                                         'label_dict': label_torch_dict,
                                         'object_ids': object_ids,
                                         'transformation_matrix': transformation_matrix_torch,
                                         'transformation_matrix_clean': transformation_matrix_clean_torch})
+            
+            if 'processed_lidar2' in cav_content:
+                output_dict[cav_id].update({
+                    'processed_lidar2': self.pre_processor.collate_batch([cav_content['processed_lidar2']])
+                })
 
             if self.visualize:
                 origin_lidar = \

@@ -781,6 +781,7 @@ class LiDARCameraIntermediateFusionDatasetDAIR(torch.utils.data.Dataset):
         # pred_box_tensor, pred_score = self.post_processor.post_process(data_dict, output_dict)
         preds = self.post_processor.post_process(data_dict, output_dict)
         gt_box_tensor = self.post_processor.generate_gt_bbx(data_dict)
-
+        if len(preds) == 2:
+            preds = preds + ([],)
         # return pred_box_tensor, pred_score, gt_box_tensor
         return preds + (gt_box_tensor,)
