@@ -409,7 +409,6 @@ class PointPillarCoVQM(nn.Module):
 
     def forward_single(self, data_dict, mode=[0,1], training=False, visualization=False):
         output_dict = {'pyramid': 'single'}
-        record_len = data_dict['record_len']
         rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
         
 
