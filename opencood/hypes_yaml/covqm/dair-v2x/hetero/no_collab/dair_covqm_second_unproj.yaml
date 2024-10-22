@@ -1,4 +1,4 @@
-name: dair_covqm_pillar_liftsplat+pillar
+name: dair_covqm_second_unproj
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -7,7 +7,7 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2 #4 #6
-  epoches: 5
+  epoches: 20
   eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
@@ -25,7 +25,7 @@ noise_setting:
     rot_mean: 0
 
 fusion:
-  core_method: 'LiDARCameraIntermediateFusionDatasetDAIRV3' # 'LiDARCameraIntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset(V2X) supported. 
+  core_method: 'LateFusionDatasetDAIRV2' # 'LiDARCameraIntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset(V2X) supported. 
   args: 
     proj_first: &proj_first false
     clip_pc: false
@@ -118,65 +118,31 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
-    # unified_score: True
     # freeze
-    proj_backbone_args:
-      layer_nums: [3]
-      layer_strides: [1]
-      num_filters: [64]
-      inplanes: 64
-    align_loss: 'abs'
-    proj_base_agent: False
+    backbone_fix: false
+
+    no_collab: True
 
     agents: # provide in order: a1(base), a2, a3, ...
       a1:
         m1:
-          method: 'pillar'
-          origin_uid: 'a1_m1'
-          freeze: True
-          voxel_size: *voxel_size1
+          method: 'second'
+          voxel_size: *voxel_size2
           lidar_range: *cav_lidar
-          pillar_vfe:
-            use_norm: true
-            with_distance: false
-            use_absolute_xyz: true
-            num_filters: [64]
-          point_pillar_scatter:
-            num_features: 64
-
+          mean_vfe:
+            feature_points: 4
+          backbone_3d:
+            num_features_out: 32 # 64/2
         m2:
-          method: 'liftsplat'
-          origin_uid: 'a1_m2'
-          freeze: True
+          method: 'unproj'
           grid_conf: *grid_conf
           data_aug_conf: *data_aug_conf
-          img_downsample: 1
+          img_downsample: 4
           bev_dim: 64
         
-        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/multimodal/dair_covqm_pillar_liftsplat.yaml'
-        model_path: 'opencood/logs/dair_covqm_pillar_liftsplat_2024_10_16_12_32_28'
+        # model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
         fusion_channel: 64
         fusion_mode: 'explicit'
-        origin_fusion_uid: 'a1'
-        freeze_fusion: True
-
-      a2:
-        m1:
-          method: 'pillar'
-          origin_uid: 'a1_m1'
-          freeze: True
-          voxel_size: *voxel_size1
-          lidar_range: *cav_lidar
-          pillar_vfe:
-            use_norm: true
-            with_distance: false
-            use_absolute_xyz: true
-            num_filters: [64]
-          point_pillar_scatter:
-            num_features: 64
-        
-        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/single/dair_covqm_pillar.yaml'
-        model_path: 'opencood/logs/dair_covqm_pillar_2024_10_13_02_25_12'
 
 
     shrink_header:
@@ -220,7 +186,7 @@ loss:
 
 optimizer:
   core_method: Adam
-  lr: 0.001
+  lr: 0.002
   args:
     eps: 1e-10
     weight_decay: 1e-4
@@ -228,5 +194,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [5, 10]
+  step_size: [10, 20]
 

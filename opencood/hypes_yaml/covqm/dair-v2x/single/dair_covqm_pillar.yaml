@@ -121,9 +121,6 @@ model:
     # freeze
     backbone_fix: false
 
-    fp: False # not needed in homo modality
-    align_first: False # not needed in homo modality
-
     agents: # provide in order: a1(base), a2, a3, ...
       a1:
         m1:

@@ -7,7 +7,7 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2 #4 #6
-  epoches: 10
+  epoches: 5
   eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
@@ -128,6 +128,7 @@ model:
       num_filters: [64]
       inplanes: 64
     align_loss: 'abs'
+    proj_base_agent: False
 
 
     agents: # provide in order: a1(base), a2, a3, ...
@@ -176,6 +177,7 @@ model:
         origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/multimodal/dair_covqm_pillar_liftsplat.yaml'
         model_path: 'opencood/logs/dair_covqm_pillar_liftsplat_2024_10_16_12_32_28'
         fusion_channel: 64
+        fusion_mode: 'explicit'
         origin_fusion_uid: 'a1'
         freeze_fusion: True
 

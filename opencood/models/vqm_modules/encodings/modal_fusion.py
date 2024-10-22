@@ -109,7 +109,7 @@ class MultiModalFusion(nn.Module):
 
         auto_enc_loss, svd_loss = torch.tensor(0.0, requires_grad=True).to(con_feat.device), torch.tensor(0.0, requires_grad=True).to(con_feat.device)
         if self.mode == 'implicit':
-            feat_v = self.value_func(con_feat).squeeze()
+            feat_v = self.value_func(con_feat).squeeze(-1).squeeze(-1)
         
         else:
             feat_mid, feat_rec = self.autoencoder(con_feat)
@@ -157,9 +157,9 @@ class MultiModalFusion(nn.Module):
 
 
 class ModalFusionBlock(nn.Module):   
-    def __init__(self, dim):
+    def __init__(self, dim, mode='explicit'):
         super(ModalFusionBlock, self).__init__()        
-        self.fusion = MultiModalFusion(dim)
+        self.fusion = MultiModalFusion(dim, mode)
 
     def forward(self, modal_features, mode=[0,1], training=True):
         # justify

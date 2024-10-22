@@ -49,6 +49,7 @@ class PointPillarCoVQM(nn.Module):
         self.cav_range = args['lidar_range']
         self.unified_score = args['unified_score'] if 'unified_score' in args else False
         self.freeze_backbone = args['freeze_backbone'] if 'freeze_backbone' in args else False
+        self.no_collab = args['no_collab'] if 'no_collab' in args else False
 
 
         self.agent_types = args['agents']
@@ -65,7 +66,7 @@ class PointPillarCoVQM(nn.Module):
             agent_params = 0
             modality_num = 0
             for modality_uid in self.agent_types[agent_uid]:
-                if modality_uid in ['origin_hypes', 'model_path', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
+                if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
                 setattr(self, f"{agent_uid}_{modality_uid}", build_encoder(self.agent_types[agent_uid][modality_uid], self.device))
                 if 'freeze' in self.agent_types[agent_uid][modality_uid]:
                     setattr(self, f"freeze_{agent_uid}_{modality_uid}", self.agent_types[agent_uid][modality_uid]['freeze'])
@@ -77,7 +78,7 @@ class PointPillarCoVQM(nn.Module):
 
             if modality_num > 1:
                 assert 'fusion_channel' in self.agent_types[agent_uid]
-                setattr(self, f"{agent_uid}_fusion", ModalFusionBlock(self.agent_types[agent_uid]['fusion_channel']))
+                setattr(self, f"{agent_uid}_fusion", ModalFusionBlock(self.agent_types[agent_uid]['fusion_channel'], self.agent_types[agent_uid]['fusion_mode']))
                 if 'freeze_fusion' in self.agent_types[agent_uid]:
                     setattr(self, f"freeze_{agent_uid}_fusion", self.agent_types[agent_uid]['freeze_fusion'])
                 else:
@@ -90,6 +91,12 @@ class PointPillarCoVQM(nn.Module):
 
         if len(self.agent_types) > 1:
             assert 'proj_backbone_args' in args
+            self.proj_base_agent = args['proj_base_agent'] if 'proj_base_agent' in args else True
+            if self.proj_base_agent:
+                print('Proj base agent.')
+            else:
+                self.freeze_backbone = True
+                print('Base agent will not be projected.')
             for idx, agent_uid in enumerate(self.agent_types):
                 # if idx == 0: continue
                 setattr(self, f"{agent_uid}_proj", ResNetBEVBackbone(args['proj_backbone_args']))
@@ -175,7 +182,7 @@ class PointPillarCoVQM(nn.Module):
         
         for agent_idx, agent_uid in enumerate(self.agent_types):
             for modality_uid in self.agent_types[agent_uid]:
-                if modality_uid in ['origin_hypes', 'model_path', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
+                if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
                 if eval(f"self.freeze_{agent_uid}_{modality_uid}"):
                     assert agent_uid in agent_encoders
                     encoder = agent_encoders[agent_uid]
@@ -210,6 +217,11 @@ class PointPillarCoVQM(nn.Module):
         return (data - data.min()) / (data.max() - data.min() + 1e-8) * 2 - 1
 
     def forward(self, data_dict, mode=[0,1], training=False, visualization=False):
+        if self.no_collab:
+            return self.forward_single(data_dict, mode, training, visualization)
+        return self.forward_collab(data_dict, mode, training, visualization)
+    
+    def forward_collab(self, data_dict, mode=[0,1], training=False, visualization=False):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
         rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
@@ -225,7 +237,7 @@ class PointPillarCoVQM(nn.Module):
         for agent_idx, agent_uid in enumerate(self.agent_types):
             f = []
             for modality_uid in self.agent_types[agent_uid]:
-                if modality_uid in ['origin_hypes', 'model_path', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
+                if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
                 f.append(
                     self.minmax_norm(
                         eval(f"self.{agent_uid}_{modality_uid}")(data_dict)
@@ -246,7 +258,10 @@ class PointPillarCoVQM(nn.Module):
             if len(self.agent_types) == 1:
                 features = f
             else:
-                f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
+                if agent_idx == 0 and not self.proj_base_agent:
+                    pass
+                else:
+                    f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
                 proj_features.append(f)
                 select_x, select_ego = self.regroup(f, record_len, select_idx=agent_len)
                 if features:
@@ -392,6 +407,62 @@ class PointPillarCoVQM(nn.Module):
 
         return output_dict
 
+    def forward_single(self, data_dict, mode=[0,1], training=False, visualization=False):
+        output_dict = {'pyramid': 'single'}
+        record_len = data_dict['record_len']
+        rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
+        
+
+        # process raw data to get feature for each agent
+        for agent_idx, agent_uid in enumerate(self.agent_types):
+            f = []
+            for modality_uid in self.agent_types[agent_uid]:
+                if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
+                f.append(
+                    self.minmax_norm(
+                        eval(f"self.{agent_uid}_{modality_uid}")(data_dict)
+                ))
+
+            if len(f) > 1:
+                f, _rec_loss, _svd_loss = eval(f"self.{agent_uid}_fusion")(f, mode=mode, training=training)
+                rec_loss = rec_loss + _rec_loss
+                svd_loss = svd_loss + _svd_loss
+                features = self.minmax_norm(f)
+            elif len(f) == 1:
+                features = f[0]
+            else:
+                raise
+
+        # heter_feature_2d is downsampled 2x
+        # add croping information to collaboration module
+        fused_feature, _ = self.pyramid_backbone.forward_single(features)
+
+        if self.shrink_flag:
+            fused_feature = self.shrink_conv(fused_feature)
+
+        cls_preds = self.cls_head(fused_feature)
+        reg_preds = self.reg_head(fused_feature)
+        # dir_preds = self.dir_head(fused_feature)
+        seg_preds = self.dynamic_head(fused_feature)
+
+        # output
+        output_dict.update({
+            'rec_loss': rec_loss,
+            'svd_loss': svd_loss,
+            'bfp_loss': bfp_loss,
+        })
+
+        output_dict.update({
+            'cls_preds': cls_preds,
+            'reg_preds': reg_preds,
+            # 'dir_preds': dir_preds,
+            'seg_preds': seg_preds,
+            'psm': cls_preds,
+            'rm': reg_preds,
+        })
+
+        return output_dict
+
     def inference_single(self, data_dict, output_agent_index):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
@@ -404,7 +475,7 @@ class PointPillarCoVQM(nn.Module):
 
             f = []
             for modality_uid in self.agent_types[agent_uid]:
-                if modality_uid in ['origin_hypes', 'model_path', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
+                if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
                 f.append(
                     self.minmax_norm(
                         eval(f"self.{agent_uid}_{modality_uid}")(data_dict)

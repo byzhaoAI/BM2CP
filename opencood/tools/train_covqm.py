@@ -77,48 +77,49 @@ def main():
     # print(model)
     # print("Number of parameter: %.2fM" % (total/1e6))
 
-    # load pretrained agents
-    agent_types = hypes['model']['args']['agents']
-    agent_encoders = {}
-    shrink_conv, backbone, cls_head, reg_head, dir_head, dynamic_head = None, None, None, None, None, None
-    for agent_idx, agent_uid in enumerate(agent_types):
-        if 'origin_hypes' in agent_types[agent_uid] and 'model_path' in agent_types[agent_uid]:
-            origin_hypes = yaml_utils.load_yaml(agent_types[agent_uid]['origin_hypes'], opt)
-            pretrained_model = train_utils.create_model(origin_hypes)
-            _, pretrained_model = train_utils.load_saved_model(agent_types[agent_uid]['model_path'], pretrained_model)
-            
-            if agent_uid == 'a1':                
-                shrink_conv = pretrained_model.shrink_conv
-                backbone = pretrained_model.pyramid_backbone
-                cls_head = pretrained_model.cls_head
-                reg_head = pretrained_model.reg_head
-                dir_head = pretrained_model.dir_head
-                if 'seg_class' in origin_hypes['model']['args']:
-                    dynamic_head = pretrained_model.dynamic_head
-                    print(f"Load a1.shrink_conv/backbone/cls_head/reg_head/dir_head/dynamic_head for model")
-                else:
-                    print(f"Load a1.shrink_conv/backbone/cls_head/reg_head/dir_head for model")
+    if not opt.model_dir:
+        # load pretrained agents
+        agent_types = hypes['model']['args']['agents']
+        agent_encoders = {}
+        shrink_conv, backbone, cls_head, reg_head, dir_head, dynamic_head = None, None, None, None, None, None
+        for agent_idx, agent_uid in enumerate(agent_types):
+            if 'origin_hypes' in agent_types[agent_uid] and 'model_path' in agent_types[agent_uid]:
+                origin_hypes = yaml_utils.load_yaml(agent_types[agent_uid]['origin_hypes'], opt)
+                pretrained_model = train_utils.create_model(origin_hypes)
+                _, pretrained_model = train_utils.load_saved_model(agent_types[agent_uid]['model_path'], pretrained_model)
+                
+                if agent_uid == 'a1':                
+                    shrink_conv = pretrained_model.shrink_conv
+                    backbone = pretrained_model.pyramid_backbone
+                    cls_head = pretrained_model.cls_head
+                    reg_head = pretrained_model.reg_head
+                    dir_head = pretrained_model.dir_head
+                    if 'seg_class' in origin_hypes['model']['args']:
+                        dynamic_head = pretrained_model.dynamic_head
+                        print(f"Load a1.shrink_conv/backbone/cls_head/reg_head/dir_head/dynamic_head for model")
+                    else:
+                        print(f"Load a1.shrink_conv/backbone/cls_head/reg_head/dir_head for model")
 
-            encoder = {}
-            for modality_uid in agent_types[agent_uid]:
-                if modality_uid in ['origin_hypes', 'model_path', 'origin_fusion_uid', 'fusion_channel']:
-                    continue
-                elif modality_uid == 'freeze_fusion':
-                    encoder.update({
-                        "fusion": eval(f"pretrained_model.{agent_types[agent_uid]['origin_fusion_uid']}_fusion")
-                    })
-                elif 'freeze' in agent_types[agent_uid][modality_uid] and agent_types[agent_uid][modality_uid]['freeze']:
-                    assert 'origin_uid' in agent_types[agent_uid][modality_uid]
-                    print(f"Load pretrained_model.{agent_types[agent_uid][modality_uid]['origin_uid']} for model.{agent_uid}_{modality_uid}")
-                    encoder.update({
-                        f"{agent_uid}_{modality_uid}": eval(f"pretrained_model.{agent_types[agent_uid][modality_uid]['origin_uid']}")
-                    })
-            agent_encoders.update({
-                agent_uid: encoder
-            })
-    
-    if agent_encoders:
-        model.update_model(shrink_conv, backbone, cls_head, reg_head, dir_head, dynamic_head, agent_encoders)
+                encoder = {}
+                for modality_uid in agent_types[agent_uid]:
+                    if modality_uid in ['origin_hypes', 'model_path', 'origin_fusion_uid', 'fusion_channel']:
+                        continue
+                    elif modality_uid == 'freeze_fusion':
+                        encoder.update({
+                            "fusion": eval(f"pretrained_model.{agent_types[agent_uid]['origin_fusion_uid']}_fusion")
+                        })
+                    elif 'freeze' in agent_types[agent_uid][modality_uid] and agent_types[agent_uid][modality_uid]['freeze']:
+                        assert 'origin_uid' in agent_types[agent_uid][modality_uid]
+                        print(f"Load pretrained_model.{agent_types[agent_uid][modality_uid]['origin_uid']} for model.{agent_uid}_{modality_uid}")
+                        encoder.update({
+                            f"{agent_uid}_{modality_uid}": eval(f"pretrained_model.{agent_types[agent_uid][modality_uid]['origin_uid']}")
+                        })
+                agent_encoders.update({
+                    agent_uid: encoder
+                })
+        
+        if agent_encoders:
+            model.update_model(shrink_conv, backbone, cls_head, reg_head, dir_head, dynamic_head, agent_encoders)
 
     
     # device = torch.device('cpu')
