@@ -41,7 +41,7 @@ def normalize_pairwise_tfm(pairwise_t_matrix, H, W, discrete_ratio, downsample_r
 
 
 class MultiModalFusion(nn.Module):
-    def __init__(self, dim, mode='implicit', ratio=0.8, num_layers=3, threshold=0.5):
+    def __init__(self, dim, mode='implicit', ratio=0.8, num_layers=3, threshold=0.1):
         super().__init__()
         self.dim =  256
         self.threshold = threshold
