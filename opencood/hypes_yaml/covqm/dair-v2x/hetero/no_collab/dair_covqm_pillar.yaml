@@ -1,4 +1,4 @@
-name: dair_covqm_second_unproj_nocollab
+name: dair_covqm_pillar_nocollab
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -7,7 +7,7 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2 #4 #6
-  epoches: 20
+  epoches: 30
   eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
@@ -120,30 +120,21 @@ model:
     supervise_single: False
     # freeze
     backbone_fix: false
-
     no_collab: True
 
     agents: # provide in order: a1(base), a2, a3, ...
       a1:
         m1:
-          method: 'second'
-          batch_size: *batch_size
-          voxel_size: *voxel_size2
+          method: 'pillar'
+          voxel_size: *voxel_size1
           lidar_range: *cav_lidar
-          mean_vfe:
-            feature_points: 4
-          backbone_3d:
-            num_features_out: 32 # 64/2
-        m2:
-          method: 'unproj'
-          grid_conf: *grid_conf
-          data_aug_conf: *data_aug_conf
-          img_downsample: 4
-          bev_dim: 64
-        
-        # model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
-        fusion_channel: 64
-        fusion_mode: 'explicit'
+          pillar_vfe:
+            use_norm: true
+            with_distance: false
+            use_absolute_xyz: true
+            num_filters: [64]
+          point_pillar_scatter:
+            num_features: 64
 
 
     shrink_header:
@@ -195,5 +186,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10, 20]
+  step_size: [5, 10, 20]
 
