@@ -32,12 +32,12 @@ class SECOND(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-    def forward(self, data_dict):
+    def forward(self, data_dict, training=False):
         batch_dict = {
             'voxel_features': data_dict['processed_lidar2']['voxel_features'],
             'voxel_coords': data_dict['processed_lidar2']['voxel_coords'],
             'voxel_num_points': data_dict['processed_lidar2']['voxel_num_points'],
-            'batch_size': self.batch_size,
+            'batch_size': self.batch_size if training else 1,
         }
         batch_dict = self.mean_vfe(batch_dict)
         batch_dict = self.backbone_3d(batch_dict)

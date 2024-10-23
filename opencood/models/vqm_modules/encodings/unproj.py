@@ -45,7 +45,7 @@ class Unprojection(nn.Module):
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
 
-    def forward(self, data_dict):   # loss: 5.91->0.76
+    def forward(self, data_dict, training=False):   # loss: 5.91->0.76
         image_inputs_dict = data_dict['image_inputs']
         x, intrins, extrins = image_inputs_dict['imgs'], image_inputs_dict['intrins'], image_inputs_dict['extrins']
         B, N, C, imH, imW = x.shape     # torch.Size([4, N, 3, 320, 480])

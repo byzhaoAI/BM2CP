@@ -36,7 +36,7 @@ class LiftSplat(nn.Module):
         # print('total depth levels: ', self.D)
         self.camencode = ImgCamEncode(self.D, self.bevC, self.downsample, self.grid_conf['ddiscr'], self.grid_conf['mode'])
 
-    def forward(self, data_dict):
+    def forward(self, data_dict, training=False):
         image_inputs_dict = data_dict['image_inputs']
         geom = self.get_geometry(image_inputs_dict)  # 像素坐标到自车中坐标的映射关系 geom: B x N x D x H x W x 3
         x = image_inputs_dict['imgs']

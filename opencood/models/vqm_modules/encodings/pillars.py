@@ -27,7 +27,7 @@ class Pillars(nn.Module):
         self.pillar_vfe = PillarVFE(args['pillar_vfe'], num_point_features=4, voxel_size=args['voxel_size'], point_cloud_range=args['lidar_range'])
         self.scatter = PointPillarScatter(args['point_pillar_scatter'])
 
-    def forward(self, data_dict):
+    def forward(self, data_dict, training=False):
         batch_dict = {
             'voxel_features': data_dict['processed_lidar']['voxel_features'],
             'voxel_coords': data_dict['processed_lidar']['voxel_coords'],
