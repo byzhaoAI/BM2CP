@@ -90,7 +90,7 @@ def main():
     print(f"Left hand visualizing: {left_hand}")
 
     print('Dataset Building')
-    opencood_dataset = build_dataset(hypes, visualize=True, train=False)
+    opencood_dataset = build_dataset(hypes, visualize=False if opt.fusion_method == 'no' else True, train=False)
     print(f"{len(opencood_dataset)} samples found.")
 
     data_loader = DataLoader(opencood_dataset,
@@ -188,7 +188,12 @@ def main():
                 else:
                     pred_box_tensor, pred_score, pred_dbev, gt_box_tensor = inference_utils.inference_intermediate_fusion(batch_data, model, opencood_dataset)
             elif opt.fusion_method == 'no':
-                pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_no_fusion(batch_data, model, opencood_dataset)
+                if 'vqm' in hypes['name']:
+                    output_dict_ego = {}
+                    output_dict_ego['ego'] = model(batch_data['ego'])
+                    pred_box_tensor, pred_score, pred_dbev, gt_box_tensor = opencood_dataset.post_process_no_fusion(batch_data, output_dict_ego)
+                else:
+                    pred_box_tensor, pred_score, gt_box_tensor = inference_utils.inference_no_fusion(batch_data, model, opencood_dataset)
             
             elif opt.fusion_method == 'intermediate_with_comm':
                 pred_box_tensor, pred_score, gt_box_tensor, comm_rates, vol, each_time = inference_utils.inference_intermediate_fusion_withcomm(batch_data, model, opencood_dataset)

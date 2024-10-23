@@ -95,7 +95,7 @@ class PointPillarCoVQM(nn.Module):
             if self.proj_base_agent:
                 print('Proj base agent.')
             else:
-                self.freeze_backbone = True
+                # self.freeze_backbone = True
                 print('Base agent will not be projected.')
             for idx, agent_uid in enumerate(self.agent_types):
                 # if idx == 0: continue

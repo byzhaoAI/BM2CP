@@ -88,6 +88,7 @@ class LateFusionDatasetDAIR(Dataset):
     def __init__(self, params, visualize, train=True):
         self.params = params
         self.visualize = visualize
+        print(self.visualize)
         self.train = train
         # pre- and post- precessor, data augmentor
         self.data_augmentor = augmentor.data_augmentor.DataAugmentor(params['data_augment'], train)
@@ -648,9 +649,9 @@ class LateFusionDatasetDAIR(Dataset):
         data_dict_ego['ego'] = data_dict['ego']
         gt_box_tensor = self.post_processor.generate_gt_bbx_by_iou(data_dict)
 
-        pred_box_tensor, pred_score = \
+        pred_box_tensor, pred_score, pred_dbev = \
             self.post_processor.post_process(data_dict_ego, output_dict_ego)
-        return pred_box_tensor, pred_score, gt_box_tensor
+        return pred_box_tensor, pred_score, pred_dbev, gt_box_tensor
     
     def augment(self, lidar_np, object_bbx_center, object_bbx_mask):
         """
