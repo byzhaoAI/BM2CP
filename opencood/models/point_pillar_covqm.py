@@ -104,12 +104,16 @@ class PointPillarCoVQM(nn.Module):
         
             assert 'align_loss' in args
             if args['align_loss'] == 'abs':
+                self.loss_type = 'abs'
                 self.distribution_loss = nn.L1Loss()
             elif args['align_loss'] == 'mse':
+                self.loss_type = 'mse'
                 self.distribution_loss = nn.MSELoss()
             elif args['align_loss'] == 'kl':
+                self.loss_type = 'kl'
                 self.distribution_loss = nn.KLDivLoss(reduction='sum')
             elif args['align_loss'] == 'cos':
+                self.loss_type = 'cos'
                 self.distribution_loss = nn.CosineSimilarity(dim=0)
             else:
                 raise
@@ -285,9 +289,16 @@ class PointPillarCoVQM(nn.Module):
                     origin_features[idx],
                     origin_features[(idx+1) % len(origin_features)]
                 )
-                if dist_loss.ndim > 1:
-                    # loss is cos similarity
-                    dist_loss = torch.mean(0.5 - dist_loss * 0.5)
+                if self.loss_type == 'cos':
+                    dist_loss = 100 * torch.mean(0.5 - dist_loss * 0.5)
+                elif self.loss_type == 'kl':
+                    dist_loss = 1 + 5000 * dist_loss
+                elif self.loss_type == 'mse':
+                    dist_loss = 20 * dist_loss
+                elif self.loss_type == 'abs':
+                    dist_loss = 4 * dist_loss
+                else:
+                    raise
                 bfp_loss = bfp_loss + dist_loss
 
         # visualization of shared-specific fts here
