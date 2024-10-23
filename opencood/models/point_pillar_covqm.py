@@ -50,6 +50,7 @@ class PointPillarCoVQM(nn.Module):
         self.unified_score = args['unified_score'] if 'unified_score' in args else False
         self.freeze_backbone = args['freeze_backbone'] if 'freeze_backbone' in args else False
         self.no_collab = args['no_collab'] if 'no_collab' in args else False
+        self.supervise_single = args['supervise_single'] if 'supervise_single' in args else False
 
 
         self.agent_types = args['agents']
@@ -404,6 +405,25 @@ class PointPillarCoVQM(nn.Module):
             'psm': cls_preds,
             'rm': reg_preds,
         })
+
+
+        if self.supervise_single and len(self.agent_types) > 1 and training:
+            ego_features = []
+            for batch_feat in origin_features:
+                ego_features.append(batch_feat[0:1])
+            ego_features = torch.cat(ego_features, dim=0)
+            ego_features, _ = self.pyramid_backbone.forward_single(ego_features)
+            if self.shrink_flag:
+                ego_features = self.shrink_conv(ego_features)
+
+            output_dict.update({
+                # 'cls_preds_single': ego_output_dict['cls_preds'],
+                # 'reg_preds_single': ego_output_dict['reg_preds'],
+                # 'dir_preds_single': self.dir_head(fused_feature),
+                'seg_preds_single': self.dynamic_head(ego_features),
+                'psm_single': self.cls_head(ego_features),
+                'rm_single': self.reg_head(ego_features),
+            })
 
         return output_dict
 

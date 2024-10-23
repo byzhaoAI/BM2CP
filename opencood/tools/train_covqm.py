@@ -226,10 +226,10 @@ def main():
                     final_loss = final_loss + output_dict['rec_loss'] + output_dict['bfp_loss']
                     if output_dict['svd_loss'] < 1:
                         final_loss = final_loss + output_dict['svd_loss']
-                    # if model.max_modality_agent_index != 0:
-                    #     single_loss = criterion(output_dict, batch_data['ego']['label_dict'], prefix='_single')
-                    #     collect_unit_loss.append(single_loss.item())
-                    #     final_loss = final_loss + single_loss * 2
+                    if 'psm_single' in output_dict:
+                        single_loss = criterion(output_dict, batch_data['ego']['label_dict'], prefix='_single')
+                        collect_unit_loss.append(single_loss.item())
+                        final_loss = final_loss + single_loss
                 else:
                     final_loss = criterion.rec_forward(output_dict, final_loss)
                 # if hypes['model']['args']['supervise_single']:
