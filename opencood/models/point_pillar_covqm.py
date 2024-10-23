@@ -284,10 +284,10 @@ class PointPillarCoVQM(nn.Module):
             agent_len += 1
 
         if len(self.agent_types) > 1 and training:
-            for idx in range(len(origin_features)):
+            for idx in range(len(proj_features)):
                 dist_loss = self.distribution_loss(
-                    origin_features[idx],
-                    origin_features[(idx+1) % len(origin_features)]
+                    proj_features[idx],
+                    proj_features[(idx+1) % len(proj_features)]
                 )
                 if self.loss_type == 'cos':
                     dist_loss = 100 * torch.mean(0.5 - dist_loss * 0.5)
