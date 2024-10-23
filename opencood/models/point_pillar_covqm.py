@@ -291,14 +291,14 @@ class PointPillarCoVQM(nn.Module):
                 )
                 if self.loss_type == 'cos':
                     dist_loss = 100 * torch.mean(0.5 - dist_loss * 0.5)
-                elif self.loss_type == 'kl':
-                    dist_loss = 1 + 5000 * dist_loss
-                elif self.loss_type == 'mse':
-                    dist_loss = 20 * dist_loss
-                elif self.loss_type == 'abs':
-                    dist_loss = 4 * dist_loss
-                else:
-                    raise
+                # elif self.loss_type == 'kl':
+                #     dist_loss = 1 + 5000 * dist_loss
+                # elif self.loss_type == 'mse':
+                #     dist_loss = 20 * dist_loss
+                # elif self.loss_type == 'abs':
+                #     dist_loss = 4 * dist_loss
+                # else:
+                #     raise
                 bfp_loss = bfp_loss + dist_loss
 
         # visualization of shared-specific fts here
