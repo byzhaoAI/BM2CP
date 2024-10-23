@@ -439,7 +439,7 @@ class PointPillarCoVQM(nn.Module):
                 if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
                 f.append(
                     self.minmax_norm(
-                        eval(f"self.{agent_uid}_{modality_uid}")(data_dict)
+                        eval(f"self.{agent_uid}_{modality_uid}")(data_dict, training=training)
                 ))
 
             if len(f) > 1:
