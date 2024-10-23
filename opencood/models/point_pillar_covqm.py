@@ -280,15 +280,15 @@ class PointPillarCoVQM(nn.Module):
             agent_len += 1
 
         if len(self.agent_types) > 1 and training:
-            for idx in range(len(record_len)):
-                agent_num = record_len[idx]
-                origin_feats = origin_features[idx]
-
-                for ith_agent in range(agent_num-1):
-                    bfp_loss = bfp_loss + self.distribution_loss(
-                        origin_feats[ith_agent],
-                        origin_feats[(ith_agent+1) % agent_num]
-                    )
+            for idx in range(len(origin_features)):
+                dist_loss = self.distribution_loss(
+                    origin_features[idx],
+                    origin_features[(idx+1) % len(origin_features)]
+                )
+                if dist_loss.ndim > 1:
+                    # loss is cos similarity
+                    dist_loss = torch.mean(0.5 - dist_loss * 0.5)
+                bfp_loss = bfp_loss + dist_loss
 
         # visualization of shared-specific fts here
         if visualization:
