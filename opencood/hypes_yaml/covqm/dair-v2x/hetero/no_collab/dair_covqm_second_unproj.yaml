@@ -7,7 +7,7 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2 #4 #6
-  epoches: 20
+  epoches: 25
   eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
@@ -195,5 +195,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10, 20]
+  step_size: [5, 10, 20]
 

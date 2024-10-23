@@ -126,7 +126,7 @@ model:
       num_filters: [64]
       inplanes: 64
     align_loss: 'abs'
-    proj_base_agent: False
+    proj_base_agent: True
 
     agents: # provide in order: a1(base), a2, a3, ...
       a1:
@@ -153,8 +153,8 @@ model:
           img_downsample: 1
           bev_dim: 64
         
-        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/multimodal/dair_covqm_pillar_liftsplat.yaml'
-        model_path: 'opencood/logs/dair_covqm_pillar_liftsplat_2024_10_16_12_32_28'
+        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/hetero/no_collab/dair_covqm_pillar_liftsplat.yaml'
+        model_path: 'opencood/logs/dair_covqm_pillar_liftsplat_nocollab_2024_10_22_21_50_11'
         fusion_channel: 64
         fusion_mode: 'explicit'
         origin_fusion_uid: 'a1'
@@ -175,8 +175,8 @@ model:
           point_pillar_scatter:
             num_features: 64
         
-        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/single/dair_covqm_pillar.yaml'
-        model_path: 'opencood/logs/dair_covqm_pillar_2024_10_13_02_25_12'
+        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/hetero/no_collab/dair_covqm_pillar.yaml'
+        model_path: 'opencood/logs/dair_covqm_pillar_nocollab_2024_10_22_22_53_38'
 
 
     shrink_header:
