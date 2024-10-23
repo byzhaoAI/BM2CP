@@ -4,6 +4,7 @@ Author: Co-VQM
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
 
 from opencood.models.common_modules.downsample_conv import DownsampleConv
@@ -111,7 +112,7 @@ class PointPillarCoVQM(nn.Module):
                 self.distribution_loss = nn.MSELoss()
             elif args['align_loss'] == 'kl':
                 self.loss_type = 'kl'
-                self.distribution_loss = nn.KLDivLoss(reduction='sum')
+                self.distribution_loss = nn.KLDivLoss(reduction='batchmean')
             elif args['align_loss'] == 'cos':
                 self.loss_type = 'cos'
                 self.distribution_loss = nn.CosineSimilarity(dim=0)
@@ -285,20 +286,28 @@ class PointPillarCoVQM(nn.Module):
 
         if len(self.agent_types) > 1 and training:
             for idx in range(len(proj_features)):
-                dist_loss = self.distribution_loss(
-                    proj_features[idx],
-                    proj_features[(idx+1) % len(proj_features)]
-                )
+                
                 if self.loss_type == 'cos':
-                    dist_loss = 100 * torch.mean(0.5 - dist_loss * 0.5)
-                # elif self.loss_type == 'kl':
-                #     dist_loss = 1 + 5000 * dist_loss
-                # elif self.loss_type == 'mse':
-                #     dist_loss = 20 * dist_loss
-                # elif self.loss_type == 'abs':
-                #     dist_loss = 4 * dist_loss
-                # else:
-                #     raise
+                    dist_loss = self.distribution_loss(
+                        proj_features[idx],
+                        proj_features[(idx+1) % len(proj_features)]
+                    )
+                    dist_loss = torch.mean(0.5 - dist_loss * 0.5)
+                elif self.loss_type == 'kl':
+                    dist_loss = 0.5 * self.distribution_loss(
+                            F.log_softmax(proj_features[idx], dim=1),
+                            F.softmax(proj_features[(idx+1) % len(proj_features)], dim=1)
+                        ) + 0.5 * self.distribution_loss(
+                            F.log_softmax(proj_features[(idx+1) % len(proj_features)], dim=1),
+                            F.softmax(proj_features[idx], dim=1)
+                        )
+                elif self.loss_type == 'mse' or self.loss_type == 'abs':
+                    dist_loss = self.distribution_loss(
+                        proj_features[idx],
+                        proj_features[(idx+1) % len(proj_features)]
+                    )
+                else:
+                    raise
                 bfp_loss = bfp_loss + dist_loss
 
         # visualization of shared-specific fts here
