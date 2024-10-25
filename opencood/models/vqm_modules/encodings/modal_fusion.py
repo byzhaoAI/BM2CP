@@ -166,16 +166,16 @@ class ModalFusionBlock(nn.Module):
         selected_modal_features = []
         
         # process lidar to get bev
-        for i in range(max(mode)):
+        for i in range(max(mode)+1):
             if i in mode:
                 selected_modal_features.append(modal_features[i])
         
         x, rec_loss, svd_loss = self.fusion(selected_modal_features, training=training)
         
-        # x, rec_loss, svd_loss = self.mask_modality(lidar_feature, x, training, batch_dict['record_len'])
+        # x, rec_loss, svd_loss = self.mask_modality(selected_modal_features[0], selected_modal_features[1], batch_dict['record_len'])
         return x, rec_loss, svd_loss
 
-    def mask_modality(self, x, y, training, record_len):
+    def mask_modality(self, x, y, record_len):
         """
         x: lidar feature shape (M, C, H, W)
         y: image feature shape (M, C, H, W)
@@ -189,50 +189,50 @@ class ModalFusionBlock(nn.Module):
         #     rec_feature = torch.cat([ego_lidar, y[1:2]], dim=0)
         # else:
         #     rec_feature = ego_lidar
-        # return self.fusion([rec_feature], training=training)
+        # return self.fusion([rec_feature], training=False)
         
         # # 2. C + L
         # if x.shape[0] > 1:
         #     rec_feature = torch.cat([ego_image, x[1:2]], dim=0)
         # else:
         #     rec_feature = ego_image
-        # return self.fusion([rec_feature], training=training)
+        # return self.fusion([rec_feature], training=False)
         
         # # 3. LC + C
-        # ego_feature, rec_loss, svd_loss = self.fusion([ego_lidar, ego_image], training=training)
+        # ego_feature, rec_loss, svd_loss = self.fusion([ego_lidar, ego_image], training=False)
         # agent_features = [ego_feature]
         # if y.shape[0] > 1:
-        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([y[1:2]], training=training)
+        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([y[1:2]], training=False)
         #     agent_features.append(nearby_feature)
         #     rec_loss = rec_loss + rec_loss2
         #     svd_loss = svd_loss + svd_loss2
         # return torch.cat(agent_features, dim=0), rec_loss, svd_loss
 
         # # 4. LC + L
-        # ego_feature, rec_loss, svd_loss = self.fusion([ego_lidar, ego_image], training=training)
+        # ego_feature, rec_loss, svd_loss = self.fusion([ego_lidar, ego_image], training=False)
         # agent_features = [ego_feature]
         # if x.shape[0] > 1:
-        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([x[1:2]], training=training)
+        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([x[1:2]], training=False)
         #     agent_features.append(nearby_feature)
         #     rec_loss = rec_loss + rec_loss2
         #     svd_loss = svd_loss + svd_loss2
         # return torch.cat(agent_features, dim=0), rec_loss, svd_loss
 
         # # 5. L + LC
-        # ego_feature, rec_loss, svd_loss = self.fusion([ego_lidar], training=training)
+        # ego_feature, rec_loss, svd_loss = self.fusion([ego_lidar], training=False)
         # agent_features = [ego_feature]
         # if x.shape[0] > 1:
-        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([x[1:2], y[1:2]], training=training)
+        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([x[1:2], y[1:2]], training=False)
         #     agent_features.append(nearby_feature)
         #     rec_loss = rec_loss + rec_loss2
         #     svd_loss = svd_loss + svd_loss2
         # return torch.cat(agent_features, dim=0), rec_loss, svd_loss
 
         # # 6. C + LC
-        # ego_feature, rec_loss, svd_loss = self.fusion([ego_image], training=training)
+        # ego_feature, rec_loss, svd_loss = self.fusion([ego_image], training=False)
         # agent_features = [ego_feature]
         # if x.shape[0] > 1:
-        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([x[1:2], y[1:2]], training=training)
+        #     nearby_feature, rec_loss2, svd_loss2 = self.fusion([x[1:2], y[1:2]], training=False)
         #     agent_features.append(nearby_feature)
         #     rec_loss = rec_loss + rec_loss2
         #     svd_loss = svd_loss + svd_loss2
