@@ -51,8 +51,9 @@ class PointPillarCoVQM(nn.Module):
         self.unified_score = args['unified_score'] if 'unified_score' in args else False
         self.freeze_backbone = args['freeze_backbone'] if 'freeze_backbone' in args else False
         self.no_collab = args['no_collab'] if 'no_collab' in args else False
-        self.supervise_single = args['supervise_single'] if 'supervise_single' in args else False
-
+        self.supervise_ego = args['supervise_ego'] if 'supervise_ego' in args else False
+        self.back_proj = args['back_proj'] if 'back_proj' in args else False
+        print('no_collab, supervise_ego, back_proj: ', self.no_collab, self.supervise_ego, self.back_proj)
 
         self.agent_types = args['agents']
         if len(self.agent_types) == 1 and 'a1' in self.agent_types:
@@ -104,20 +105,22 @@ class PointPillarCoVQM(nn.Module):
                 setattr(self, f"{agent_uid}_proj", ResNetBEVBackbone(args['proj_backbone_args']))
         
             assert 'align_loss' in args
+            self.loss_type = args['align_loss']
             if args['align_loss'] == 'abs':
-                self.loss_type = 'abs'
                 self.distribution_loss = nn.L1Loss()
             elif args['align_loss'] == 'mse':
-                self.loss_type = 'mse'
                 self.distribution_loss = nn.MSELoss()
             elif args['align_loss'] == 'kl':
-                self.loss_type = 'kl'
                 self.distribution_loss = nn.KLDivLoss(reduction='batchmean')
-            elif args['align_loss'] == 'cos':
                 self.loss_type = 'cos'
                 self.distribution_loss = nn.CosineSimilarity(dim=0)
-            else:
-                raise
+            elif args['align_loss'] == 'abs+cos':
+                self.distribution_loss = [
+                    nn.L1Loss(),
+                    nn.CosineSimilarity(dim=0)
+                ]
+            # else:
+            #     raise
 
         self.shrink_flag = False
         if 'shrink_header' in args:
@@ -140,6 +143,11 @@ class PointPillarCoVQM(nn.Module):
             self.dynamic_head = nn.ConvTranspose2d(args['outC'], args['seg_class'], kernel_size=2, stride=2, padding=0)
         else:
             self.dynamic_head = None # nn.Conv2d(args['outC'], args['seg_class'], kernel_size=3, padding=1)
+
+        if self.back_proj:
+            self.ego_backbone = []
+            self.back_embed = nn.Conv2d(args['outC'], args['outC'], kernel_size=1)
+            # self.back_embed = nn.Embedding(1, args['outC'])
 
     def freeze_networks(self, net):
         for p in net.parameters():
@@ -186,6 +194,11 @@ class PointPillarCoVQM(nn.Module):
                 self.freeze_networks(net)
             print('backbone network freezed.')
         
+        if self.back_proj:
+            self.ego_backbone = [shrink_conv, backbone]
+            for net in self.ego_backbone:
+                self.freeze_networks(net)
+        
         for agent_idx, agent_uid in enumerate(self.agent_types):
             for modality_uid in self.agent_types[agent_uid]:
                 if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
@@ -223,22 +236,21 @@ class PointPillarCoVQM(nn.Module):
         return (data - data.min()) / (data.max() - data.min() + 1e-8) * 2 - 1
 
     def forward(self, data_dict, mode=[0,1], training=False, visualization=False):
-        if self.no_collab:
-            return self.forward_single(data_dict, mode, training, visualization)
         return self.forward_collab(data_dict, mode, training, visualization)
     
     def forward_collab(self, data_dict, mode=[0,1], training=False, visualization=False):
         output_dict = {'pyramid': 'collab'}
         record_len = data_dict['record_len']
-        rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
-        
+        rec_loss, svd_loss, bfp_loss, align_loss = \
+            torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device),\
+            torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
 
         agent_len = 0
         origin_features = []
         proj_features = []
 
         features = []
-        ego_features = []
+        # ego_features = []
         # process raw data to get feature for each agent
         for agent_idx, agent_uid in enumerate(self.agent_types):
             f = []
@@ -251,6 +263,7 @@ class PointPillarCoVQM(nn.Module):
 
             if len(f) > 1:
                 f, _rec_loss, _svd_loss = eval(f"self.{agent_uid}_fusion")(f, mode=mode, training=training)
+                # rec_loss & svd_loss
                 rec_loss = rec_loss + _rec_loss
                 svd_loss = svd_loss + _svd_loss
                 f = self.minmax_norm(f)
@@ -259,7 +272,7 @@ class PointPillarCoVQM(nn.Module):
             else:
                 raise
 
-
+            # len(origin_features) == len(proj_features) == agent number
             origin_features.append(f)
             if len(self.agent_types) == 1:
                 features = f
@@ -269,7 +282,8 @@ class PointPillarCoVQM(nn.Module):
                 else:
                     f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
                 proj_features.append(f)
-                select_x, select_ego = self.regroup(f, record_len, select_idx=agent_len)
+                select_x, _ = self.regroup(f, record_len, select_idx=agent_len)
+                # select_x, select_ego = self.regroup(f, record_len, select_idx=agent_len)
                 if features:
                     for i in range(len(record_len)):
                         if select_x[i] != []:
@@ -284,9 +298,9 @@ class PointPillarCoVQM(nn.Module):
             
             agent_len += 1
 
+        # align loss
         if len(self.agent_types) > 1 and training:
             for idx in range(len(proj_features)):
-                
                 if self.loss_type == 'cos':
                     dist_loss = self.distribution_loss(
                         proj_features[idx],
@@ -306,9 +320,18 @@ class PointPillarCoVQM(nn.Module):
                         proj_features[idx],
                         proj_features[(idx+1) % len(proj_features)]
                     )
+                elif self.loss_type == 'abs+cos':
+                    dist_loss = self.distribution_loss[0](
+                        proj_features[idx],
+                        proj_features[(idx+1) % len(proj_features)]
+                    ) + torch.mean(0.5 - 0.5 * self.distribution_loss[0](
+                        proj_features[idx],
+                        proj_features[(idx+1) % len(proj_features)]
+                    ))
                 else:
-                    raise
-                bfp_loss = bfp_loss + dist_loss
+                    # raise
+                    dist_loss = torch.tensor(0.0, requires_grad=True).to(self.device)
+                align_loss = align_loss + dist_loss
 
         # visualization of shared-specific fts here
         if visualization:
@@ -364,7 +387,7 @@ class PointPillarCoVQM(nn.Module):
             tsne_colors.append(vis_ft_clr)
             tsne_labels.append(symbols[:len(vis_ft)])
 
-            if len(tsne_points) == 250:  # actual visualization
+            if len(tsne_points) == 40:  # actual visualization
                 vis_tsne_points = np.concatenate(tsne_points)
                 vis_tsne_labels = np.concatenate(tsne_labels)
                 vis_tsne_colors = np.concatenate(tsne_colors)
@@ -410,13 +433,7 @@ class PointPillarCoVQM(nn.Module):
         # dir_preds = self.dir_head(fused_feature)
         seg_preds = self.dynamic_head(fused_feature)
 
-        # output
-        output_dict.update({
-            'rec_loss': rec_loss,
-            'svd_loss': svd_loss,
-            'bfp_loss': bfp_loss,
-        })
-
+        # pred for multi-agent (collab loss)
         output_dict.update({
             'cls_preds': cls_preds,
             'reg_preds': reg_preds,
@@ -426,78 +443,58 @@ class PointPillarCoVQM(nn.Module):
             'rm': reg_preds,
         })
 
-
-        if self.supervise_single and len(self.agent_types) > 1 and training:
-            ego_features = []
-            for batch_feat in origin_features:
-                ego_features.append(batch_feat[0:1])
-            ego_features = torch.cat(ego_features, dim=0)
-            ego_features, _ = self.pyramid_backbone.forward_single(ego_features)
+        # pred for ego agent (ego performance loss)
+        if self.supervise_ego and len(self.agent_types) > 1 and training:
+            ego_features, _ = self.pyramid_backbone.forward_collab(
+                proj_features[0],
+                record_len, 
+                affine_matrix
+            )
             if self.shrink_flag:
                 ego_features = self.shrink_conv(ego_features)
 
             output_dict.update({
-                # 'cls_preds_single': ego_output_dict['cls_preds'],
-                # 'reg_preds_single': ego_output_dict['reg_preds'],
-                # 'dir_preds_single': self.dir_head(fused_feature),
-                'seg_preds_single': self.dynamic_head(ego_features),
-                'psm_single': self.cls_head(ego_features),
-                'rm_single': self.reg_head(ego_features),
+                # 'cls_preds_ego': ego_output_dict['cls_preds'],
+                # 'reg_preds_ego': ego_output_dict['reg_preds'],
+                # 'dir_preds_ego': self.dir_head(fused_feature),
+                'seg_preds_ego': self.dynamic_head(ego_features),
+                'psm_ego': self.cls_head(ego_features),
+                'rm_ego': self.reg_head(ego_features),
             })
 
-        return output_dict
+            # backward proj loss
+            if self.back_proj:
+                ego_features = self.back_embed(ego_features)
+                # ego_features = ego_features * self.back_embed.weight.unsqueeze(-1).unsqueeze(-1)
+                
+                assert len(self.ego_backbone) > 0
+                # = pyramid_backbone
+                origin_ego_features, _ = self.ego_backbone[1].forward_collab(
+                    origin_features[0],
+                    record_len, 
+                    affine_matrix
+                )
+                if self.shrink_flag:
+                    origin_ego_features = self.ego_backbone[0](origin_ego_features)
+                
+                # mfro loss
+                bfp_loss = bfp_loss + torch.mean(torch.frobenius_norm(ego_features - origin_ego_features, dim=1)) / (float(ego_features.shape[1]) ** 0.5)
+                # if loss_type == 'mse':
+                #     loss = F.mse_loss(f1, f2)
+                # elif loss_type == 'rmse':
+                #     loss = F.mse_loss(f1, f2) ** 0.5
+                # elif loss_type == 'mfro':
+                #     # Mean of Frobenius norm, normalized by the number of elements
+                #     loss = torch.mean(torch.frobenius_norm(f1 - f2, dim=-1)) / (float(f1.shape[-1]) ** 0.5)
+                # elif loss_type == "cos":
+                #     loss = 1 - F.cosine_similarity(f1, f2, dim=1).mean()
 
-    def forward_single(self, data_dict, mode=[0,1], training=False, visualization=False):
-        output_dict = {'pyramid': 'single'}
-        rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
-        
-
-        # process raw data to get feature for each agent
-        for agent_idx, agent_uid in enumerate(self.agent_types):
-            f = []
-            for modality_uid in self.agent_types[agent_uid]:
-                if modality_uid in ['origin_hypes', 'model_path', 'fusion_mode', 'fusion_channel', 'origin_fusion_uid', 'freeze_fusion']: continue
-                f.append(
-                    self.minmax_norm(
-                        eval(f"self.{agent_uid}_{modality_uid}")(data_dict, training=training)
-                ))
-
-            if len(f) > 1:
-                f, _rec_loss, _svd_loss = eval(f"self.{agent_uid}_fusion")(f, mode=mode, training=training)
-                rec_loss = rec_loss + _rec_loss
-                svd_loss = svd_loss + _svd_loss
-                features = self.minmax_norm(f)
-            elif len(f) == 1:
-                features = f[0]
-            else:
-                raise
-
-        # heter_feature_2d is downsampled 2x
-        # add croping information to collaboration module
-        fused_feature, _ = self.pyramid_backbone.forward_single(features)
-
-        if self.shrink_flag:
-            fused_feature = self.shrink_conv(fused_feature)
-
-        cls_preds = self.cls_head(fused_feature)
-        reg_preds = self.reg_head(fused_feature)
-        # dir_preds = self.dir_head(fused_feature)
-        seg_preds = self.dynamic_head(fused_feature)
-
-        # output
+        # collect loss
         output_dict.update({
             'rec_loss': rec_loss,
             'svd_loss': svd_loss,
             'bfp_loss': bfp_loss,
-        })
-
-        output_dict.update({
-            'cls_preds': cls_preds,
-            'reg_preds': reg_preds,
-            # 'dir_preds': dir_preds,
-            'seg_preds': seg_preds,
-            'psm': cls_preds,
-            'rm': reg_preds,
+            'align_loss': align_loss,
         })
 
         return output_dict
@@ -527,7 +524,7 @@ class PointPillarCoVQM(nn.Module):
             else:
                 raise
             # batch_size=1 in inference, select the ego as single feature
-            features = f[0:1]
+            features = f#[0:1]
             # if agent length > 1, the scenario is hetero collaboration, proj exists
             if len(self.agent_types) > 1:
                 features = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':features})['spatial_features_2d']
@@ -535,7 +532,32 @@ class PointPillarCoVQM(nn.Module):
 
         # heter_feature_2d is downsampled 2x
         # add croping information to collaboration module
-        fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features)
+        # fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features)
+
+        """For feature transformation"""
+        self.H = (self.cav_range[4] - self.cav_range[1])
+        self.W = (self.cav_range[3] - self.cav_range[0])
+        self.fake_voxel_size = 1
+        affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
+        # _record_len = torch.ones(record_len.shape).long().to(record_len.device)
+        _record_len = record_len
+        if self.unified_score:
+            fused_feature_single = self.pyramid_backbone.resnet._forward_impl(
+                rearrange(features, 'b m c h w -> (b m) c h w'), 
+                return_interm=False
+            )
+            fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+                                                    features,
+                                                    self.cls_head(fused_feature_single).sigmoid().max(dim=1)[0].unsqueeze(1),
+                                                    _record_len, 
+                                                    affine_matrix, 
+                                                )
+        else:
+            fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+                                                    features,
+                                                    _record_len, 
+                                                    affine_matrix
+                                                )
 
         if self.shrink_flag:
             fused_feature = self.shrink_conv(fused_feature)

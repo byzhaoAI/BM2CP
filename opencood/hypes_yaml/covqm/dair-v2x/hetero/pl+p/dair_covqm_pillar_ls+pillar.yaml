@@ -1,4 +1,4 @@
-name: dair_covqm_pl+p_abs
+name: dair_covqm_pl+p_ablation_nobfp_nosupego
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -6,8 +6,8 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 2 #4 #6
-  epoches: 5
+  batch_size: &batch_size 1 #4 #6
+  epoches: 15
   eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
@@ -117,17 +117,18 @@ model:
     lidar_range: *cav_lidar
     max_cav: *max_cav
     proj_first: *proj_first
-    supervise_single: False
     # unified_score: True
-    # freeze
+    
     proj_backbone_args:
       layer_nums: [3]
       layer_strides: [1]
       num_filters: [64]
       inplanes: 64
-    align_loss: 'abs'
+    
+    align_loss: 'no'
     proj_base_agent: True
-    supervise_single: False
+    supervise_ego: True
+    back_proj: True
 
     agents: # provide in order: a1(base), a2, a3, ...
       a1:
@@ -154,8 +155,8 @@ model:
           img_downsample: 1
           bev_dim: 64
         
-        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/hetero/no_collab/dair_covqm_pillar_liftsplat.yaml'
-        model_path: 'opencood/logs/dair_covqm_pillar_liftsplat_nocollab_2024_10_22_21_50_11'
+        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/multimodal/dair_covqm_pillar_liftsplat.yaml'
+        model_path: 'opencood/logs/dair_covqm_pillar_liftsplat_2024_10_16_12_32_28'
         fusion_channel: 64
         fusion_mode: 'explicit'
         origin_fusion_uid: 'a1'
@@ -176,8 +177,8 @@ model:
           point_pillar_scatter:
             num_features: 64
         
-        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/hetero/no_collab/dair_covqm_pillar.yaml'
-        model_path: 'opencood/logs/dair_covqm_pillar_nocollab_2024_10_22_22_53_38'
+        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/single/dair_covqm_pillar.yaml'
+        model_path: 'opencood/logs/dair_covqm_pillar_2024_10_13_02_25_12'
 
 
     shrink_header:

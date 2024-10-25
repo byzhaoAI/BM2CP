@@ -216,18 +216,24 @@ def main():
                 # first argument is always your output dictionary,
                 # second argument is always your label dictionary.
                 final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
-                collect_unit_loss = [output_dict['rec_loss'].item(), output_dict['svd_loss'].item(), output_dict['bfp_loss'].item()]
+                collect_unit_loss = [
+                    output_dict['rec_loss'].item(), 
+                    output_dict['svd_loss'].item(), 
+                    output_dict['bfp_loss'].item(),
+                    output_dict['align_loss'].item(),
+                    final_loss.item()
+                ]
                 # if 'modality_num' in output_dict and output_dict['modality_num'] > 1:
                 #     for m_idx in range(output_dict['modality_num']):
                 #         unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
                 #         final_loss = final_loss + unit_loss
                 #         collect_unit_loss.append(unit_loss.item())
                 if hypes['loss']['core_method'] in ['point_pillar_loss', 'combined_loss']:
-                    final_loss = final_loss + output_dict['rec_loss'] + output_dict['bfp_loss']
+                    final_loss = final_loss + output_dict['rec_loss'] + output_dict['bfp_loss'] + output_dict['align_loss'] * 0.5
                     if output_dict['svd_loss'] < 1:
                         final_loss = final_loss + output_dict['svd_loss']
-                    if 'psm_single' in output_dict:
-                        single_loss = criterion(output_dict, batch_data['ego']['label_dict'], prefix='_single')
+                    if 'supervise_ego' in hypes['model']['args'] and hypes['model']['args']['supervise_ego']:
+                        single_loss = criterion(output_dict, batch_data['ego']['label_dict'], prefix='_ego')
                         collect_unit_loss.append(single_loss.item())
                         final_loss = final_loss + single_loss
                 else:
@@ -243,10 +249,10 @@ def main():
             criterion.logging(epoch+1, i, len(train_loader), writer)    
             
             with open(os.path.join(saved_path, 'train_loss.txt'), 'a+') as f:
-                msg = "[epoch %d][%d/%d][%s] || Total || %.5f, Rec: %.5f, SVD: %.5f, BFP: %.5f || " % (
+                msg = "[epoch %d][%d/%d][%s] || Total || %.5f, Rec: %.5f, SVD: %.5f, BFP: %.5f, ALIGN: %.5f || " % (
                   epoch+1, i+1, len(train_loader), mode,
-                  final_loss, collect_unit_loss[0], collect_unit_loss[1], collect_unit_loss[2])
-                msg += f"Others: {collect_unit_loss[3:]} \n"
+                  final_loss, collect_unit_loss[0], collect_unit_loss[1], collect_unit_loss[2], collect_unit_loss[3])
+                msg += f"Others: {collect_unit_loss[4:]} \n"
                 f.write(msg)
 
             #print(a)
