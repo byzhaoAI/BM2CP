@@ -14,6 +14,7 @@ from opencood.models.vqm_modules.weight_pyramid_fuse import PyramidFusion as SPy
 
 from opencood.models.vqm_modules.encodings import build_encoder, ModalFusionBlock
 from opencood.models.heal_modules.base_bev_backbone_resnet import ResNetBEVBackbone
+from opencood.models.vqm_modules.proj import cal_bfp_loss
 
 
 from sklearn.manifold import TSNE
@@ -145,6 +146,8 @@ class PointPillarCoVQM(nn.Module):
             self.dynamic_head = None # nn.Conv2d(args['outC'], args['seg_class'], kernel_size=3, padding=1)
 
         if self.back_proj:
+            assert 'bfp_loss' in args
+            self.bfp_loss_type = args['bfp_loss']
             self.ego_backbone = []
             self.back_embed = nn.Conv2d(args['outC'], args['outC'], kernel_size=1)
             # self.back_embed = nn.Embedding(1, args['outC'])
@@ -306,7 +309,7 @@ class PointPillarCoVQM(nn.Module):
                         proj_features[idx],
                         proj_features[(idx+1) % len(proj_features)]
                     )
-                    dist_loss = torch.mean(0.5 - dist_loss * 0.5)
+                    dist_loss = 1 - torch.mean(dist_loss)
                 elif self.loss_type == 'kl':
                     dist_loss = 0.5 * self.distribution_loss(
                             F.log_softmax(proj_features[idx], dim=1),
@@ -477,17 +480,7 @@ class PointPillarCoVQM(nn.Module):
                 if self.shrink_flag:
                     origin_ego_features = self.ego_backbone[0](origin_ego_features)
                 
-                # mfro loss
-                bfp_loss = bfp_loss + torch.mean(torch.frobenius_norm(ego_features - origin_ego_features, dim=1)) / (float(ego_features.shape[1]) ** 0.5)
-                # if loss_type == 'mse':
-                #     loss = F.mse_loss(f1, f2)
-                # elif loss_type == 'rmse':
-                #     loss = F.mse_loss(f1, f2) ** 0.5
-                # elif loss_type == 'mfro':
-                #     # Mean of Frobenius norm, normalized by the number of elements
-                #     loss = torch.mean(torch.frobenius_norm(f1 - f2, dim=-1)) / (float(f1.shape[-1]) ** 0.5)
-                # elif loss_type == "cos":
-                #     loss = 1 - F.cosine_similarity(f1, f2, dim=1).mean()
+                bfp_loss = cal_bfp_loss(ego_features, origin_ego_features, self.bfp_loss_type)
 
         # collect loss
         output_dict.update({

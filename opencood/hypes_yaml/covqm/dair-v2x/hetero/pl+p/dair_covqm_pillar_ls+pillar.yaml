@@ -129,6 +129,7 @@ model:
     proj_base_agent: True
     supervise_ego: True
     back_proj: True
+    bfp_loss: 'mfro' # options [mfro|abs|mse|cos]
 
     agents: # provide in order: a1(base), a2, a3, ...
       a1:

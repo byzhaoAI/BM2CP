@@ -39,6 +39,7 @@ def pool_feat(f1, f2, pool_dim, normalize_feat=False):
 
     return (f1, f2)
 
+
 def match_loss(fs, loss_type):
     f1, f2 = fs
     # Compute the loss according to the loss type
@@ -60,3 +61,15 @@ def match_loss(fs, loss_type):
         raise ValueError("Unknown loss type: {}".format(loss_type))
 
     return loss
+
+
+def cal_bfp_loss(f1, f2, loss_type):
+    if loss_type == 'mse':
+        return F.mse_loss(f1, f2)
+    if loss_type == 'abs':
+        return F.l1_loss(f1, f2)
+    if loss_type == 'mfro':
+        return torch.mean(torch.frobenius_norm(f1 - f2, dim=1)) / (float(f1.shape[1]) ** 0.5)
+    if loss_type == 'cos':
+        return 1 - F.cosine_similarity(f1, f2, dim=1).mean()
+    raise
