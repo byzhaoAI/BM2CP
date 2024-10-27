@@ -50,16 +50,24 @@ class CombinedLoss(nn.Module):
         conf_loss = self.loss_dict['conf_loss']
         dynamic_loss = self.loss_dict['dynamic_loss']
         static_loss = self.loss_dict.get('static_loss', None)
+
+        total_loss_ego = self.loss_dict.get('total_loss_ego', torch.tensor(0.0))
+        reg_loss_ego = self.loss_dict.get('reg_loss_ego', torch.tensor(0.0))
+        conf_loss_ego = self.loss_dict.get('conf_loss_ego', torch.tensor(0.0))
+
         if static_loss is None:
             static_loss = torch.tensor(0.0)
         if pbar is None:
             print("[epoch %d][%d/%d], || Loss: %.4f "
                   "|| Dynamic Loss: %.4f || Static Loss: %.4f "
-                  "|| Conf Loss: %.4f"
-                " || Loc Loss: %.4f" % (
+                  "|| Conf Loss: %.4f || Loc Loss: %.4f "
+                " || Ego Loss: %.4f, %.4f, %.4f" % (
                     epoch, batch_id + 1, batch_len, total_loss.item(),
                     dynamic_loss.item(), static_loss.item(),
-                    conf_loss.item(), reg_loss.item()))
+                    conf_loss.item(), reg_loss.item(),
+                    total_loss_ego.item(), reg_loss_ego.item(), conf_loss_ego.item()
+                )
+            )
         else:
             pbar.set_description("[epoch %d][%d/%d], || Loss: %.4f "
                                  "|| Dynamic Loss: %.4f "
