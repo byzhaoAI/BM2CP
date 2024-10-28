@@ -134,7 +134,12 @@ model:
       layer_strides: [1]
       num_filters: [64]
       inplanes: 64
-    align_loss: 'abs'
+    
+    align_loss: 'no'
+    proj_base_agent: True
+    supervise_ego: True
+    back_proj: True
+    bfp_loss: 'mfro' # options [mfro|abs|mse|cos]
 
     multimodal:
       # params for camera branch
