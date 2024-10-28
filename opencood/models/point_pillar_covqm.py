@@ -517,7 +517,7 @@ class PointPillarCoVQM(nn.Module):
             else:
                 raise
             # batch_size=1 in inference, select the ego as single feature
-            features = f#[0:1]
+            features = f[0:1]
             # if agent length > 1, the scenario is hetero collaboration, proj exists
             if len(self.agent_types) > 1:
                 features = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':features})['spatial_features_2d']
@@ -532,8 +532,8 @@ class PointPillarCoVQM(nn.Module):
         self.W = (self.cav_range[3] - self.cav_range[0])
         self.fake_voxel_size = 1
         affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
-        # _record_len = torch.ones(record_len.shape).long().to(record_len.device)
-        _record_len = record_len
+        _record_len = torch.ones(record_len.shape).long().to(record_len.device)
+        # _record_len = record_len
         if self.unified_score:
             fused_feature_single = self.pyramid_backbone.resnet._forward_impl(
                 rearrange(features, 'b m c h w -> (b m) c h w'), 
