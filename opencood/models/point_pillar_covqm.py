@@ -113,7 +113,7 @@ class PointPillarCoVQM(nn.Module):
                 self.distribution_loss = nn.MSELoss()
             elif args['align_loss'] == 'kl':
                 self.distribution_loss = nn.KLDivLoss(reduction='batchmean')
-                self.loss_type = 'cos'
+            elif args['align_loss'] == 'cos':
                 self.distribution_loss = nn.CosineSimilarity(dim=0)
             elif args['align_loss'] == 'abs+cos':
                 self.distribution_loss = [

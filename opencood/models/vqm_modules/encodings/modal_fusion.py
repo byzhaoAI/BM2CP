@@ -44,10 +44,10 @@ class MultiModalFusion(nn.Module):
     def __init__(self, dim, mode='implicit', ratio=0.8, num_layers=3, threshold=0.1):
         super().__init__()
         self.dim =  256
-        self.threshold = threshold
         self.ratio = ratio
         self.mode = mode
         if self.mode == 'implicit':
+            self.threshold = 0.5
             self.value_func = nn.Sequential(
                 nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
@@ -56,6 +56,7 @@ class MultiModalFusion(nn.Module):
             )
 
         else:
+            self.threshold = 0.1
             self.autoencoder = Autoencoder()
             self.rec_loss = nn.MSELoss()
             self.abs_loss = nn.L1Loss()
