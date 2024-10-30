@@ -459,6 +459,7 @@ class LateFusionDatasetDAIR(Dataset):
         # during training, we only care about ego.
         output_dict = {'ego': {}}
 
+        record_len = []
         object_bbx_center = []
         object_bbx_mask = []
         processed_lidar_list = []
@@ -471,6 +472,7 @@ class LateFusionDatasetDAIR(Dataset):
 
         for i in range(len(batch)):
             ego_dict = batch[i]['ego']
+            record_len.append(1)
             object_bbx_center.append(ego_dict['object_bbx_center'])
             object_bbx_mask.append(ego_dict['object_bbx_mask'])
             processed_lidar_list.append(ego_dict['processed_lidar'])
@@ -500,6 +502,11 @@ class LateFusionDatasetDAIR(Dataset):
                                    'image_inputs': merged_image_inputs_dict,
                                    'anchor_box': torch.from_numpy(ego_dict['anchor_box']),
                                    'label_dict': label_torch_dict})
+
+        output_dict['ego'].update({
+            'record_len': torch.from_numpy(np.array(record_len, dtype=int)),
+        })
+
         if self.visualize:
             origin_lidar = \
                 np.array(downsample_lidar_minimum(pcd_np_list=origin_lidar))
@@ -555,7 +562,6 @@ class LateFusionDatasetDAIR(Dataset):
                 origin_lidar = [cav_content['origin_lidar']]
 
                 if (self.params['only_vis_ego'] is False) or (cav_id=='ego'):
-                    print(cav_id)
                     import copy
                     projected_lidar = copy.deepcopy(cav_content['origin_lidar'])
                     projected_lidar[:, :3] = \
@@ -588,6 +594,10 @@ class LateFusionDatasetDAIR(Dataset):
                                         'object_ids': object_ids,
                                         'transformation_matrix': transformation_matrix_torch,
                                         'transformation_matrix_clean': transformation_matrix_clean_torch})
+
+            output_dict[cav_id].update({
+                'record_len': torch.from_numpy(np.array([1], dtype=int)),
+            })
             
             if 'processed_lidar2' in cav_content:
                 output_dict[cav_id].update({
