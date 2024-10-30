@@ -402,31 +402,35 @@ class PointPillarCoVQM(nn.Module):
         if isinstance(features, list):
             features = torch.cat(features, dim=0)
 
-        """For feature transformation"""
-        self.H = (self.cav_range[4] - self.cav_range[1])
-        self.W = (self.cav_range[3] - self.cav_range[0])
-        self.fake_voxel_size = 1
-        affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
+        if self.no_collab:
+            fused_feature, _ = self.pyramid_backbone.forward_single(features)
 
-        # heter_feature_2d is downsampled 2x
-        # add croping information to collaboration module
-        if self.unified_score:
-            fused_feature_single = self.pyramid_backbone.resnet._forward_impl(
-                rearrange(features, 'b m c h w -> (b m) c h w'), 
-                return_interm=False
-            )
-            fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
-                                                    features,
-                                                    self.cls_head(fused_feature_single).sigmoid().max(dim=1)[0].unsqueeze(1),
-                                                    record_len, 
-                                                    affine_matrix, 
-                                                )
         else:
-            fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
-                                                    features,
-                                                    record_len, 
-                                                    affine_matrix
-                                                )
+            """For feature transformation"""
+            self.H = (self.cav_range[4] - self.cav_range[1])
+            self.W = (self.cav_range[3] - self.cav_range[0])
+            self.fake_voxel_size = 1
+            affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
+
+            # heter_feature_2d is downsampled 2x
+            # add croping information to collaboration module
+            if self.unified_score:
+                fused_feature_single = self.pyramid_backbone.resnet._forward_impl(
+                    rearrange(features, 'b m c h w -> (b m) c h w'), 
+                    return_interm=False
+                )
+                fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+                                                        features,
+                                                        self.cls_head(fused_feature_single).sigmoid().max(dim=1)[0].unsqueeze(1),
+                                                        record_len, 
+                                                        affine_matrix, 
+                                                    )
+            else:
+                fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
+                                                        features,
+                                                        record_len, 
+                                                        affine_matrix
+                                                    )
 
         if self.shrink_flag:
             fused_feature = self.shrink_conv(fused_feature)
@@ -449,7 +453,7 @@ class PointPillarCoVQM(nn.Module):
         # pred for ego agent (ego performance loss)
         if self.supervise_ego and len(self.agent_types) > 1 and training:
             ego_features, _ = self.pyramid_backbone.forward_collab(
-                proj_features[0],
+                proj_features[0],#[0:1],
                 record_len, 
                 affine_matrix
             )
@@ -525,8 +529,8 @@ class PointPillarCoVQM(nn.Module):
 
         # heter_feature_2d is downsampled 2x
         # add croping information to collaboration module
-        # fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features)
-
+        fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features)
+        '''
         """For feature transformation"""
         self.H = (self.cav_range[4] - self.cav_range[1])
         self.W = (self.cav_range[3] - self.cav_range[0])
@@ -551,7 +555,7 @@ class PointPillarCoVQM(nn.Module):
                                                     _record_len, 
                                                     affine_matrix
                                                 )
-
+        '''
         if self.shrink_flag:
             fused_feature = self.shrink_conv(fused_feature)
 
