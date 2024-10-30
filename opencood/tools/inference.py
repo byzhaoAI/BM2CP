@@ -134,6 +134,10 @@ def main():
     model.zero_grad()
     # model.eval()
 
+    # for name, param in model.named_parameters():
+    #     if param.requires_grad:
+    #         print(name, param.size())
+
     # Create the dictionary for evaluation
     #result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0},
     #               0.5: {'tp': [], 'fp': [], 'gt': 0},
