@@ -1,4 +1,4 @@
-name: opv2v_covqm_pillar
+name: opv2v_covqm_liftsplat
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
@@ -119,16 +119,11 @@ model:
     agents:
       a1:
         m1:
-          method: 'pillar'
-          voxel_size: *voxel_size1
-          lidar_range: *cav_lidar
-          pillar_vfe:
-            use_norm: True
-            with_distance: False
-            use_absolute_xyz: True
-            num_filters: [ 64 ]
-          point_pillar_scatter:
-            num_features: 64
+          method: 'liftsplat'
+          grid_conf: *grid_conf
+          data_aug_conf: *data_aug_conf
+          img_downsample: 2
+          bev_dim: 64
 
 
     shrink_header:
