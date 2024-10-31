@@ -120,6 +120,7 @@ model:
       a1:
         m1:
           method: 'second'
+          batch_size: *batch_size
           voxel_size: *voxel_size2
           lidar_range: *cav_lidar
           mean_vfe:
