@@ -104,7 +104,7 @@ def main():
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
-    print(model)
+    # print(model)
     total = sum([param.nelement() for param in model.parameters()])
     print("Number of parameter: %d" % (total))
 

@@ -72,9 +72,8 @@ def main():
     print('Creating Model')
     model = train_utils.create_model(hypes)
     total = sum([param.nelement() for param in model.parameters()])
-    print(model)
-    print("Number of parameter: %d" % (total))
     # print(model)
+    print("Number of parameter: %d" % (total))
     # print("Number of parameter: %.2fM" % (total/1e6))
     
     # device = torch.device('cpu')
