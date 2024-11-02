@@ -1,4 +1,4 @@
-name: dair_covqm_second+pillar_liftsplat
+name: dair_covqm_su+pl_noBP
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -6,8 +6,8 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 
 yaml_parser: "load_hetero_params"
 train_params:
-  batch_size: &batch_size 2 #4 #6
-  epoches: 10
+  batch_size: &batch_size 1 #4 #6
+  epoches: 15
   eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
@@ -117,18 +117,18 @@ model:
     lidar_range: *cav_lidar
     max_cav: *max_cav
     proj_first: *proj_first
-    supervise_single: False
-    # unified_score: True
-    # freeze
-    # freeze_backbone: True
 
     proj_backbone_args:
       layer_nums: [3]
       layer_strides: [1]
       num_filters: [64]
       inplanes: 64
-    align_loss: 'abs'
-
+    
+    align_loss: 'no'
+    proj_base_agent: True
+    supervise_ego: True
+    back_proj: False
+    bfp_loss: 'no' # options [mfro|abs|mse|cos]
 
     agents: # provide in order: a1(base), a2, a3, ...
       a1:
@@ -136,15 +136,30 @@ model:
           method: 'second'
           origin_uid: 'a1_m1'
           freeze: True
+          batch_size: *batch_size
           voxel_size: *voxel_size2
           lidar_range: *cav_lidar
           mean_vfe:
             feature_points: 4
-          backbone_3d: # []
+          backbone_3d:
             num_features_out: 32 # 64/2
-        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/single/dair_covqm_second.yaml'
-        model_path: 'opencood/logs/dair_covqm_second_2024_10_13_16_28_07'
-      
+        
+        m2:
+          method: 'unproj'
+          origin_uid: 'a1_m2'
+          freeze: True
+          grid_conf: *grid_conf
+          data_aug_conf: *data_aug_conf
+          img_downsample: 2
+          bev_dim: 64
+        
+        origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/multimodal/dair_covqm_second_unproj.yaml'
+        model_path: 'opencood/logs/covqm_finals/base_homo/dair_covqm_second_unproj_2024_10_29_01_16_20'
+        fusion_channel: 64
+        fusion_mode: 'implicit'
+        origin_fusion_uid: 'a1'
+        freeze_fusion: True
+
       a2:
         m1:
           method: 'pillar'
@@ -159,7 +174,7 @@ model:
             num_filters: [64]
           point_pillar_scatter:
             num_features: 64
-        
+
         m2:
           method: 'liftsplat'
           origin_uid: 'a1_m2'
@@ -170,8 +185,9 @@ model:
           bev_dim: 64
         
         origin_hypes: 'opencood/hypes_yaml/covqm/dair-v2x/multimodal/dair_covqm_pillar_liftsplat.yaml'
-        model_path: 'opencood/logs/dair_covqm_pillar_liftsplat_2024_10_16_12_32_28'
+        model_path: 'opencood/logs/covqm_finals/base_homo/dair_covqm_pillar_liftsplat_2024_10_25_22_38_16'
         fusion_channel: 64
+        fusion_mode: 'explicit'
         origin_fusion_uid: 'a1'
         freeze_fusion: True
 
@@ -217,7 +233,7 @@ loss:
 
 optimizer:
   core_method: Adam
-  lr: 0.001 # 0.00002
+  lr: 0.001
   args:
     eps: 1e-10
     weight_decay: 1e-4

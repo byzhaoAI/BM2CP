@@ -1,4 +1,4 @@
-name: dair_covqm_second
+name: dair_covqm_second_nocollab
 data_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
@@ -7,7 +7,7 @@ test_dir: "/mnt/data/byzhao/DAIR-V2X/cooperative-vehicle-infrastructure/val.json
 yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2 #4 #6
-  epoches: 30
+  epoches: 20
   eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
@@ -119,16 +119,14 @@ model:
     proj_first: *proj_first
     supervise_single: False
     # unified_score: True
-    # freeze
     backbone_fix: false
-
-    fp: False
-    align_first: False
+    no_collab: True
 
     agents: # provide in order: a1(base), a2, a3, ...
       a1:
         m1:
           method: 'second'
+          batch_size: *batch_size
           voxel_size: *voxel_size2
           lidar_range: *cav_lidar
           mean_vfe:

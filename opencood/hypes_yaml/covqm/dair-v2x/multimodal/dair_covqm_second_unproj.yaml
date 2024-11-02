@@ -128,6 +128,7 @@ model:
       a1:
         m1:
           method: 'second'
+          batch_size: *batch_size
           voxel_size: *voxel_size2
           lidar_range: *cav_lidar
           mean_vfe:
@@ -138,12 +139,12 @@ model:
           method: 'unproj'
           grid_conf: *grid_conf
           data_aug_conf: *data_aug_conf
-          img_downsample: 4
+          img_downsample: 2
           bev_dim: 64
         
         # model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
         fusion_channel: 64
-        fusion_mode: 'explicit'
+        fusion_mode: 'implicit'
 
 
     shrink_header:

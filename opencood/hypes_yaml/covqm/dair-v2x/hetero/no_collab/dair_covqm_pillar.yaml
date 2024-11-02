@@ -13,7 +13,7 @@ train_params:
   max_cav: &max_cav 2
 
 device: &device cuda
-
+only_vis_ego: False
 
 #comm_range: 100
 noise_setting:

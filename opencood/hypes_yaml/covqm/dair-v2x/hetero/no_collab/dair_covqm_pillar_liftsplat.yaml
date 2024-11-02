@@ -13,7 +13,7 @@ train_params:
   max_cav: &max_cav 2
 
 device: &device cuda
-
+only_vis_ego: False
 
 #comm_range: 100
 noise_setting:
@@ -141,7 +141,7 @@ model:
           method: 'liftsplat'
           grid_conf: *grid_conf
           data_aug_conf: *data_aug_conf
-          img_downsample: 1
+          img_downsample: 2
           bev_dim: 64
         
         # model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'

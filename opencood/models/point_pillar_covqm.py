@@ -253,6 +253,7 @@ class PointPillarCoVQM(nn.Module):
         proj_features = []
 
         features = []
+        ego_features = []
         # process raw data to get feature for each agent
         for agent_idx, agent_uid in enumerate(self.agent_types):
             f = []
@@ -283,8 +284,8 @@ class PointPillarCoVQM(nn.Module):
                     pass
                 else:
                     f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
-                proj_features.append(f)
-                select_x, _ = self.regroup(f, record_len, select_idx=agent_len)
+                # proj_features.append(f)
+                select_x, select_ego = self.regroup(f, record_len, select_idx=agent_len)
                 if features:
                     for i in range(len(record_len)):
                         if select_x[i] != []:
@@ -296,6 +297,7 @@ class PointPillarCoVQM(nn.Module):
                 #         ego_features[i] = torch.cat([ego_features[i], select_ego[i]], dim=0)
                 # else:
                 #     ego_features = select_ego
+                ego_features.append(torch.cat(select_ego, dim=0))
             
             agent_len += 1
 
@@ -428,27 +430,34 @@ class PointPillarCoVQM(nn.Module):
 
         # pred for ego agent (ego performance loss)
         if (self.supervise_ego or self.back_proj) and len(self.agent_types) > 1 and training:
-            ego_features, _ = self.pyramid_backbone.forward_collab(
-                proj_features[0],#[0:1],
-                record_len, 
+            _record_len = torch.ones(record_len.shape).long().to(record_len.device)
+            # if len(self.agent_types) > 1:
+            #     output_dict.update({
+            #         'agent_num': len(new_agent_features)
+            #     })
+
+            # only supervise the base ego agent
+            ego_feature, _ = self.pyramid_backbone.forward_collab(
+                ego_features[0], #proj_features[0],#[0:1],
+                _record_len, 
                 affine_matrix
             )
             if self.shrink_flag:
-                ego_features = self.shrink_conv(ego_features)
+                ego_feature = self.shrink_conv(ego_feature)
 
             if self.supervise_ego:
                 output_dict.update({
                     # 'cls_preds_ego': ego_output_dict['cls_preds'],
                     # 'reg_preds_ego': ego_output_dict['reg_preds'],
                     # 'dir_preds_ego': self.dir_head(fused_feature),
-                    'seg_preds_ego': self.dynamic_head(ego_features),
-                    'psm_ego': self.cls_head(ego_features),
-                    'rm_ego': self.reg_head(ego_features),
+                    'seg_preds_ego': self.dynamic_head(ego_feature),
+                    'psm_ego': self.cls_head(ego_feature),
+                    'rm_ego': self.reg_head(ego_feature),
                 })
 
             # backward proj loss
             if self.back_proj:
-                ego_features = self.back_embed(ego_features)
+                ego_feature = self.back_embed(ego_feature)
                 # ego_features = ego_features * self.back_embed.weight.unsqueeze(-1).unsqueeze(-1)
                 
                 assert len(self.ego_backbone) > 0
@@ -461,7 +470,7 @@ class PointPillarCoVQM(nn.Module):
                 if self.shrink_flag:
                     origin_ego_features = self.ego_backbone[0](origin_ego_features)
                 
-                bfp_loss = cal_bfp_loss(ego_features, origin_ego_features, self.bfp_loss_type)
+                bfp_loss = cal_bfp_loss(ego_feature, origin_ego_features, self.bfp_loss_type)
 
         # collect loss
         output_dict.update({
