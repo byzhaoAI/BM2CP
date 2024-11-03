@@ -1,12 +1,12 @@
-name: opv2v_covqm_base
+name: opv2v_covqm_pillar_liftsplat
 root_dir: '/mnt/data/byzhao/OPV2V/train'
 validate_dir: '/mnt/data/byzhao/OPV2V/validate'
 
 yaml_parser: "load_hetero_params"
 train_params:
   batch_size: &batch_size 2
-  epoches: &epoches 30
-  eval_freq: 2
+  epoches: &epoches 20
+  eval_freq: 5
   save_freq: 1
   max_cav: &max_cav 2
 
@@ -26,7 +26,7 @@ wild_setting:
   backbone_delay: 10  # ms
 
 fusion:
-  core_method: 'LiDARCameraIntermediateFusionDatasetOPV2V_V3' # 'MultiModalIntermediateFusionDatasetOPV2V'  # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'LateFusionDatasetOPV2V_V2' # 'MultiModalIntermediateFusionDatasetOPV2V'  # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args: 
     proj_first: &proj_first false
     clip_pc: false
@@ -38,10 +38,10 @@ fusion:
       mode: 'LID'
     data_aug_conf: &data_aug_conf
       resize_lim: [0.7, 0.8]
-      final_dim: [300, 400]
+      final_dim: [256, 256]
       rot_lim: [0, 0] #[-3.6, 3.6]
-      H: 600
-      W: 800
+      H: 256
+      W: 256
       rand_flip: False
       bot_pct_lim: [0.0, 0.20]
       cams: ['camera0', 'camera1', 'camera2', 'camera3']
@@ -69,7 +69,7 @@ preprocess:
     # LiDAR range for each individual CAV
     cav_lidar_range: *cav_lidar
   cav_lidar_range: *cav_lidar
-
+  bev_map_resolution: 0.4
 
 data_augment:
   - NAME: random_world_flip
@@ -113,14 +113,32 @@ model:
     max_cav: *max_cav
     proj_first: *proj_first
     supervise_single: False
-    backbone_fix: False
+    # unified_score: true
 
-    f2:
-      # second 
-      mean_vfe:
-        feature_points: 4
-      backbone_3d: # []
-        num_features_out: 32 # 64/2
+    agents: # provide in order: a1(base), a2, a3, ...
+      a1:
+        m1:
+          method: 'pillar'
+          voxel_size: *voxel_size1
+          lidar_range: *cav_lidar
+          pillar_vfe:
+            use_norm: true
+            with_distance: false
+            use_absolute_xyz: true
+            num_filters: [64]
+          point_pillar_scatter:
+            num_features: 64
+
+        m2:
+          method: 'liftsplat'
+          grid_conf: *grid_conf
+          data_aug_conf: *data_aug_conf
+          img_downsample: 2
+          bev_dim: 64
+        
+        # model_path: 'opencood/logs/dair_covqm_base_2024_09_15_16_21_32/'
+        fusion_channel: 64
+
 
     shrink_header:
       use: true
@@ -145,38 +163,20 @@ model:
     # params for prediction
     outC: *out_channels
     anchor_number: *anchor_num
+    seg_class: 2
+    seg_upsample: 2
     dir_args: *dir_args
 
 
 loss:
-  core_method: point_pillar_pyramid_loss
+  core_method: combined_loss
   args:
-    pos_cls_weight: 2.0
-    cls:
-      type: 'SigmoidFocalLoss'
-      alpha: 0.25
-      gamma: 2.0
-      weight: 1.0
-    reg:
-      type: 'WeightedSmoothL1Loss'
-      sigma: 3.0
-      codewise: true
-      weight: 2.0
-    dir:
-      type: 'WeightedSoftmaxClassificationLoss'
-      weight: 0.2
-      args: *dir_args
-    depth:
-      weight: 1.0
-    pyramid:
-      relative_downsample: [1, 2, 4]
-      weight: [0.4, 0.2, 0.1]
-    rec:
-      weight: 1
-    svd:
-      weight: 1
-    bfp:
-      weight: 1
+    point_pillar_seg_loss:
+      d_weights: 75.0
+      d_coe: 2.0
+    point_pillar_loss:
+      cls_weight: 1.0
+      reg: 2.0
 
 
 optimizer:
@@ -189,5 +189,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [15, 30]
+  step_size: [5, 10, 20]
 
