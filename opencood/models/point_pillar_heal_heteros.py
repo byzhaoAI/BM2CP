@@ -380,7 +380,6 @@ class PointPillarHEALHeteros(nn.Module):
         # rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device), torch.tensor(0.0, requires_grad=True).to(self.device)
         
         features = []
-        new_agent_features = []
         selected_agent_num = 0
         # process raw data to get feature for each agent
         for agent_idx, agent_uid in enumerate(self.agent_types):
@@ -402,7 +401,6 @@ class PointPillarHEALHeteros(nn.Module):
                 raise
             
             # if agent length > 1, the scenario is hetero collaboration, proj exists
-
             if agent_idx == 0:
                 pass
             else:
