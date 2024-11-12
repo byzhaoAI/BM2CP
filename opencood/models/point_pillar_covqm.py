@@ -104,6 +104,7 @@ class PointPillarCoVQM(nn.Module):
             for idx, agent_uid in enumerate(self.agent_types):
                 # if idx == 0: continue
                 setattr(self, f"{agent_uid}_proj", ResNetBEVBackbone(args['proj_backbone_args']))
+                # print("Number of parameter proj: %d" % (sum([param.nelement() for param in eval(f"self.{agent_uid}_proj").parameters()])))
         
             assert 'align_loss' in args
             self.loss_type = args['align_loss']
@@ -266,7 +267,7 @@ class PointPillarCoVQM(nn.Module):
                 )
 
             if len(f) > 1:
-                f, _rec_loss, _svd_loss = eval(f"self.{agent_uid}_fusion")(f, mode=[0,1], training=training)
+                f, _rec_loss, _svd_loss = eval(f"self.{agent_uid}_fusion")(f, mode=mode, training=training)
                 rec_loss = rec_loss + _rec_loss
                 svd_loss = svd_loss + _svd_loss
                 f = self.minmax_norm(f)
@@ -489,10 +490,10 @@ class PointPillarCoVQM(nn.Module):
         
         features = []
         selected_agent_num = 0
+        selected_agents = []
         # process raw data to get feature for each agent
         for agent_idx, agent_uid in enumerate(self.agent_types):
-            if agent_idx != output_agent_index: continue
-            selected_agent_num += 1
+            if agent_idx not in output_agent_index: continue
 
             f = []
             for modality_uid in self.agent_types[agent_uid]:
@@ -520,16 +521,25 @@ class PointPillarCoVQM(nn.Module):
                 else:
                     f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
 
+            if f.shape[0] >= selected_agent_num + 1:
+                selected_agents.append(f[selected_agent_num:selected_agent_num+1])
+
+            selected_agent_num += 1
+        
         """For feature transformation"""
         self.H = (self.cav_range[4] - self.cav_range[1])
         self.W = (self.cav_range[3] - self.cav_range[0])
         self.fake_voxel_size = 1
         affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
 
-        assert selected_agent_num == 1
+        # assert selected_agent_num == 1
         # batch_size=1 in inference, select the ego as single feature
-        features = f[0:1]
-        _record_len = torch.ones(record_len.shape).long().to(record_len.device)
+        # features = f[0:1]
+        # _record_len = torch.ones(record_len.shape).long().to(record_len.device)
+        features = torch.cat(selected_agents, dim=0)
+        _affine_matrix = affine_matrix #[:,output_agent_index,output_agent_index]
+        _record_len = torch.ones(record_len.shape).long().to(record_len.device) * features.shape[0]
+        # print(affine_matrix.shape, _affine_matrix.shape, _record_len)
         # _record_len = record_len
         # fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features)
 
@@ -545,13 +555,13 @@ class PointPillarCoVQM(nn.Module):
                                                     features,
                                                     self.cls_head(fused_feature_single).sigmoid().max(dim=1)[0].unsqueeze(1),
                                                     _record_len, 
-                                                    affine_matrix, 
+                                                    _affine_matrix, 
                                                 )
         else:
             fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
                                                     features,
                                                     _record_len, 
-                                                    affine_matrix
+                                                    _affine_matrix
                                                 )
 
         if self.shrink_flag:

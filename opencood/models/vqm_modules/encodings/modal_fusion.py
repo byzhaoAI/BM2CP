@@ -131,6 +131,7 @@ class MultiModalFusion(nn.Module):
         feat_v = rearrange(feat_v, '(b m) c -> b m c', b=B, m=M)
         counts = torch.sum(feat_v > self.threshold, dim=-1)
         best_indices = torch.argmax(counts, dim=-1)
+        # best_indices = torch.randint(low=0, high=2, size=(B,)).to(con_feat.device)
 
         con_feat = rearrange(con_feat, '(b m) c h w -> b m c h w', b=B, m=M)
         x = con_feat

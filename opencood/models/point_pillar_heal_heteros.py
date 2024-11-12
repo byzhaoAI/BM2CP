@@ -213,11 +213,12 @@ class PointPillarHEALHeteros(nn.Module):
         origin_features = []
         proj_features = []
 
-
         features = []
         new_agent_features = []
         # process raw data to get feature for each agent
         for agent_idx, agent_uid in enumerate(self.agent_types):
+            if agent_idx not in selected_agents: continue
+            
             f = []
             modality_num = 0
             for modality_uid in self.agent_types[agent_uid]:
@@ -348,21 +349,26 @@ class PointPillarHEALHeteros(nn.Module):
         # train for new agents
         if training and self.align_with_ego:
             _record_len = torch.ones(record_len.shape).long().to(record_len.device)
-            for new_feature in new_agent_features:
+            for new_agent_idx, new_feature in enumerate(new_agent_features):
                 fused_new_feature, occ_outputs = self.pyramid_backbone.forward_collab(
                                                 new_feature,
                                                 _record_len, 
                                                 affine_matrix
                                             )
-            if self.shrink_flag:
-                fused_new_feature = self.shrink_conv(fused_new_feature)
+                if self.shrink_flag:
+                    fused_new_feature = self.shrink_conv(fused_new_feature)
 
-            # pred for multi-agent (collab loss)
-            output_dict.update({
-                'seg_preds_ego': self.dynamic_head(fused_new_feature),
-                'psm_ego': self.cls_head(fused_new_feature),
-                'rm_ego': self.reg_head(fused_new_feature),
-            })
+                # pred for multi-agent (collab loss)
+                output_dict.update({
+                    f'seg_preds_ego_{new_agent_idx}': self.dynamic_head(fused_new_feature),
+                    f'psm_ego_{new_agent_idx}': self.cls_head(fused_new_feature),
+                    f'rm_ego_{new_agent_idx}': self.reg_head(fused_new_feature),
+                })
+
+            if len(new_agent_features) > 1:
+                output_dict.update({
+                    'new_agent_num': len(new_agent_features)
+                })
 
         # collect loss
         output_dict.update({
@@ -381,10 +387,10 @@ class PointPillarHEALHeteros(nn.Module):
         
         features = []
         selected_agent_num = 0
+        selected_agents = []
         # process raw data to get feature for each agent
         for agent_idx, agent_uid in enumerate(self.agent_types):
-            if agent_idx != output_agent_index: continue
-            selected_agent_num += 1
+            if agent_idx not in output_agent_index: continue
 
             f = []
             for modality_uid in self.agent_types[agent_uid]:
@@ -406,16 +412,24 @@ class PointPillarHEALHeteros(nn.Module):
             else:
                 f = eval(f"self.a{agent_idx+1}_proj")({'spatial_features':f})['spatial_features_2d']
 
+            if f.shape[0] >= selected_agent_num + 1:
+                selected_agents.append(f[selected_agent_num:selected_agent_num+1])
+
+            selected_agent_num += 1
+        
         """For feature transformation"""
         self.H = (self.cav_range[4] - self.cav_range[1])
         self.W = (self.cav_range[3] - self.cav_range[0])
         self.fake_voxel_size = 1
         affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
 
-        assert selected_agent_num == 1
+        # assert selected_agent_num == 1
         # batch_size=1 in inference, select the ego as single feature
-        features = f[0:1]
-        _record_len = torch.ones(record_len.shape).long().to(record_len.device)
+        # features = f[0:1]
+        # _record_len = torch.ones(record_len.shape).long().to(record_len.device)
+        features = torch.cat(selected_agents, dim=0)
+        _affine_matrix = affine_matrix #[:,output_agent_index,output_agent_index]
+        _record_len = torch.ones(record_len.shape).long().to(record_len.device) * features.shape[0]
         # _record_len = record_len
         # fused_feature, occ_outputs = self.pyramid_backbone.forward_single(features)
 
@@ -425,7 +439,7 @@ class PointPillarHEALHeteros(nn.Module):
         fused_feature, occ_outputs = self.pyramid_backbone.forward_collab(
                                                 features,
                                                 _record_len, 
-                                                affine_matrix
+                                                _affine_matrix
                                             )
 
         if self.shrink_flag:
@@ -444,7 +458,7 @@ class PointPillarHEALHeteros(nn.Module):
             'psm': cls_preds,
             'rm': reg_preds,
         })
-        
+
         return output_dict
 
 

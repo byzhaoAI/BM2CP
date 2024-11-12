@@ -13,7 +13,7 @@ class SECOND(nn.Module):
     def __init__(self, args, device):
         super(SECOND, self).__init__()
         # for second
-        self.batch_size = args['batch_size']
+        # self.batch_size = args['batch_size']
         cav_lidar_range = args['lidar_range']
         voxel_size = args['voxel_size']
         grid_size = (np.array(cav_lidar_range[3:6]) - np.array(cav_lidar_range[0:3])) / np.array(voxel_size)

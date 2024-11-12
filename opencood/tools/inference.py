@@ -49,7 +49,7 @@ def test_parser():
                              'in npy file')
     parser.add_argument('--eval_epoch', type=int, default=None,
                         help='Set the checkpoint')
-    parser.add_argument('--inference_single', type=int, default=-1,
+    parser.add_argument('--inference_single', nargs='+', type=int, default=-1,
                         help='Inference which agent')
     parser.add_argument('--modality', type=str, default='0,1',
                         help='Inference with which modality')

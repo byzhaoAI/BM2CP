@@ -24,7 +24,7 @@ import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils
 from opencood.data_utils.datasets import build_dataset
 
-from thop import profile
+from thop import profile, clever_format
 
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -212,6 +212,62 @@ def main():
                         mode = np.random.choice(2, 2)
                         output_dict = model(batch_data['ego'], mode, training=True)
                     else:
+                        # # 使用 thop 计算 FLOPs
+                        # macs, params = profile(model, inputs=(batch_data['ego'], ))
+                        # print(f"FLOPs: {macs}")
+                        # print(f"Parameters: {params}")
+                        # # macs, params = profile(model, inputs=(batch_data['ego'], ))
+                        # # # 格式化输出
+                        # # macs, params = clever_format([macs, params], "%.3f")
+                        # # print("FLOPs: ", macs)
+                        # # print("Params: ", params)
+                        # # print(macs, params)
+
+                        # # 定义自定义的钩子函数
+                        # def custom_hook(module, input, output):
+                        #     if any(param.requires_grad for param in module.parameters()):
+                        #         module.macs = compute_module_flops(module, input, output)
+                        #     else:
+                        #         module.macs = 0
+
+                        # # 计算模块的 FLOPs
+                        # def compute_module_flops(module, input, output):
+                        #     if isinstance(module, torch.nn.Conv2d):
+                        #         batch_size = input[0].size(0)
+                        #         output_height, output_width = output.size(2), output.size(3)
+                        #         in_channels, out_channels, kernel_height, kernel_width = module.in_channels, module.out_channels, module.kernel_size[0], module.kernel_size[1]
+                        #         flops = batch_size * output_height * output_width * in_channels * out_channels * kernel_height * kernel_width / module.groups
+                        #     elif isinstance(module, torch.nn.Linear):
+                        #         batch_size = input[0].size(0)
+                        #         in_features, out_features = module.in_features, module.out_features
+                        #         flops = batch_size * in_features * out_features
+                        #     else:
+                        #         flops = 0
+                        #     return flops
+
+                        # # 注册自定义的钩子函数
+                        # hooks = []
+                        # for name, module in model.named_modules():
+                        #     if isinstance(module, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.BatchNorm2d)):  # 只针对特定类型的模块
+                        #         hooks.append(module.register_forward_hook(custom_hook))
+
+                        # # 计算 FLOPs
+                        # with torch.no_grad():
+                        #     model(batch_data['ego'], training=True)
+
+                        # # 收集 FLOPs
+                        # total_macs = sum(module.macs for module in model.modules() if hasattr(module, 'macs'))
+
+                        # # 清理钩子
+                        # for hook in hooks:
+                        #     hook.remove()
+
+                        # # 打印结果
+                        # total_macs, total_params = clever_format([total_macs, sum(p.numel() for p in model.parameters() if p.requires_grad)], "%.3f")
+                        # print(f"FLOPs: {total_macs}")
+                        # print(f"Parameters: {total_params}")
+
+                        # print(aaa)
                         output_dict = model(batch_data['ego'], training=True)
                 else:
                     output_dict = model(batch_data['ego'])
@@ -231,7 +287,7 @@ def main():
                 #         unit_loss = criterion(output_dict, batch_data['ego']['label_dict'], suffix='_{}'.format(m_idx))
                 #         final_loss = final_loss + unit_loss
                 #         collect_unit_loss.append(unit_loss.item())
-                if hypes['loss']['core_method'] in ['point_pillar_loss', 'combined_loss']:
+                if hypes['loss']['core_method'] in ['point_pillar_loss', 'combined_loss', 'combined_loss_multi_ego']:
                     final_loss = final_loss + output_dict['rec_loss'] + output_dict['bfp_loss'] + output_dict['align_loss'] * 0.5
                     if output_dict['svd_loss'] < 1:
                         final_loss = final_loss + output_dict['svd_loss']
@@ -267,6 +323,9 @@ def main():
 
             if hypes['lr_scheduler']['core_method'] == 'cosineannealwarm':
                 scheduler.step_update(epoch * len(train_loader) + i)
+
+            # if (i+1) % 6000 == 0:
+            #     torch.save(model.state_dict(), os.path.join(saved_path, 'net_epoch%d.pth' % (epoch + 1)))
         
         if (epoch+1) % hypes['train_params']['save_freq'] == 0:
             torch.save(model.state_dict(), os.path.join(saved_path, 'net_epoch%d.pth' % (epoch + 1)))

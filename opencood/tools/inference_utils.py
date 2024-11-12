@@ -97,14 +97,17 @@ def inference_early_fusion(batch_data, model, dataset, modality_index=-1, mode=N
         pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data[0], output_dict)
     else:
         cav_content = batch_data['ego']
-        if modality_index > -1:
+        if isinstance(modality_index, list):
             output_dict['ego'] = model.inference_single(cav_content, modality_index)
         elif mode is not None:
             output_dict['ego'] = model(cav_content, mode=mode, training=False) 
         else:
-            output_dict['ego'] = model(cav_content) 
-        pred_box_tensor, pred_score, pred_dbev, gt_box_tensor = dataset.post_process(batch_data, output_dict)
-    
+            output_dict['ego'] = model(cav_content)
+        if len(dataset.post_process(batch_data, output_dict)) > 3:
+            pred_box_tensor, pred_score, pred_dbev, gt_box_tensor = dataset.post_process(batch_data, output_dict)
+        else:
+            pred_box_tensor, pred_score, gt_box_tensor = dataset.post_process(batch_data, output_dict)
+            pred_dbev = []
     return pred_box_tensor, pred_score, pred_dbev, gt_box_tensor
 
 def inference_intermediate_fusion_withcomm(batch_data, model, dataset):
