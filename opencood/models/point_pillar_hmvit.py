@@ -158,7 +158,7 @@ class PointPillarHMViT(nn.Module):
         return select_x, select_ego
         
 
-    def forward(self, data_dict):
+    def forward(self, data_dict, mode=[0,1], training=False):
         output_dict = {}
         record_len = data_dict['record_len']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']

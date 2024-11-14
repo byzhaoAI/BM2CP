@@ -37,7 +37,7 @@ class Multimodal(nn.Module):
             self.shrink_flag = False
 
     def forward(self, batch_dict, mode=[0,1], training=False):
-        rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device)
+        # rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device)
         
         f, _, _, _rec_loss, _svd_loss = self.basebone(batch_dict, mode=mode, training=training)
         features = self.backbone({'spatial_features': f})['spatial_features_2d']
