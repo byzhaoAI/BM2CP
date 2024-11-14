@@ -272,12 +272,12 @@ class PointPillarHMViT(nn.Module):
                 agent_idx += 1
 
 
-        if self.type > 1:
+        if self.type > 1 and not (self.pillar is not None and self.second is not None):
             # (B, L)
             # mode = batch['mode'].to(torch.int)
             mode = torch.Tensor([0, 1]).repeat(len(record_len), 1).to(torch.int).to(record_len.device)
         else:
-            mode = torch.Tensor([0, 0]).repeat(len(record_len), 1).to(torch.int).to(record_len.device)
+            mode = torch.Tensor([1, 1]).repeat(len(record_len), 1).to(torch.int).to(record_len.device)
 
         mode_unpack = self.unpad_mode_encoding(mode, record_len)
 
