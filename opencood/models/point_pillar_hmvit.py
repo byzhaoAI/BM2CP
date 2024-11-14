@@ -8,27 +8,34 @@ import torch.nn as nn
 import numpy as np
 from opencood.models.common_modules.pillar_vfe import PillarVFE
 from opencood.models.common_modules.point_pillar_scatter import PointPillarScatter
-from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone as PCBaseBEVBackbone
+from opencood.models.common_modules.base_bev_backbone import BaseBEVBackbone
 from opencood.models.common_modules.downsample_conv import DownsampleConv
 from opencood.models.common_modules.naive_compress import NaiveCompressor
 
 from opencood.utils.camera_utils import gen_dx_bx, cumsum_trick, QuickCumsum, depth_discretization
 
-from opencood.models.realcp_modules.base_bev_backbone_resnet import ResNetBEVBackbone
-from opencood.models.realcp_modules.sensor_blocks import ImgCamEncode
+from opencood.models.hmvit_modules.spatial_transformation import SpatialTransformation
+from opencood.models.hmvit_modules.base_camera_lidar_intermediate import BaseCameraLiDARIntermediate
+from opencood.models.hmvit_modules.naive_decoder import NaiveDecoder
+from opencood.models.hmvit_modules.hetero_decoder import HeteroDecoder
 from opencood.models.hmvit_modules.hetero_fusion import HeteroFusionBlock
-from opencood.models.hmvit_modules.spatial_transformation import \
-    SpatialTransformation
 from opencood.models.hmvit_modules.base_transformer import HeteroFeedForward
+
+from opencood.models.hmvit_modules import types_encoding
+
 from einops import rearrange
 
 import torchvision
+
+from opencood.models.vqm_modules.f1 import CoVQMF1
+from opencood.models.vqm_modules.encodings.second import SECOND
 
 
 class HeteroFusion(nn.Module):
     def __init__(self, config):
         super(HeteroFusion, self).__init__()
-        self.spatial_transform = SpatialTransformation(config['spatial_transform'])
+        self.spatial_transform = SpatialTransformation(
+            config['spatial_transform'])
         self.downsample_rate = config['spatial_transform']['downsample_rate']
         self.discrete_ratio = config['spatial_transform']['voxel_size'][0]
 
@@ -54,284 +61,268 @@ class HeteroFusion(nn.Module):
         return x
 
 
-def normalize_pairwise_tfm(pairwise_t_matrix, H, W, discrete_ratio, downsample_rate=1):
-    """
-    normalize the pairwise transformation matrix to affine matrix need by torch.nn.functional.affine_grid()
-    Args:
-        pairwise_t_matrix: torch.tensor
-            [B, L, L, 4, 4], B batchsize, L max_cav
-        H: num.
-            Feature map height
-        W: num.
-            Feature map width
-        discrete_ratio * downsample_rate: num.
-            One pixel on the feature map corresponds to the actual physical distance
-
-    Returns:
-        affine_matrix: torch.tensor
-            [B, L, L, 2, 3]
-    """
-
-    affine_matrix = pairwise_t_matrix[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]] # [B, L, L, 2, 3]
-    affine_matrix[...,0,1] = affine_matrix[...,0,1] * H / W
-    affine_matrix[...,1,0] = affine_matrix[...,1,0] * W / H
-    affine_matrix[...,0,2] = affine_matrix[...,0,2] / (downsample_rate * discrete_ratio * W) * 2
-    affine_matrix[...,1,2] = affine_matrix[...,1,2] / (downsample_rate * discrete_ratio * H) * 2
-
-    return affine_matrix
-
-
 class PointPillarHMViT(nn.Module):
-    def create_frustum(self):
-        # make grid in image plane
-        ogfH, ogfW = self.data_aug_conf['final_dim']  # 原始图片大小  ogfH:128  ogfW:288
-        fH, fW = ogfH // self.downsample, ogfW // self.downsample  # 下采样16倍后图像大小  fH: 12  fW: 22
-        # ds = torch.arange(*self.grid_conf['dbound'], dtype=torch.float).view(-1, 1, 1).expand(-1, fH, fW)  # 在深度方向上划分网格 ds: DxfHxfW(41x12x22)
-        ds = torch.tensor(depth_discretization(*self.grid_conf['ddiscr'], self.grid_conf['mode']), dtype=torch.float).view(-1,1,1).expand(-1, fH, fW)
-
-        D, _, _ = ds.shape # D: 41 表示深度方向上网格的数量
-        xs = torch.linspace(0, ogfW - 1, fW, dtype=torch.float).view(1, 1, fW).expand(D, fH, fW)  # 在0到288上划分18个格子 xs: DxfHxfW(41x12x22)
-        ys = torch.linspace(0, ogfH - 1, fH, dtype=torch.float).view(1, fH, 1).expand(D, fH, fW)  # 在0到127上划分8个格子 ys: DxfHxfW(41x12x22)
-
-        # D x H x W x 3
-        frustum = torch.stack((xs, ys, ds), -1)  # 堆积起来形成网格坐标, frustum[i,j,k,0]就是(i,j)位置，深度为k的像素的宽度方向上的栅格坐标   frustum: DxfHxfWx3
-        return frustum
-    
     def __init__(self, args):
         super(PointPillarHMViT, self).__init__()
-        # cuda选择
         self.max_cav = args['max_cav']
-        self.cav_range = args['lidar_range']
-        self.device = args['device'] if 'device' in args else 'cpu'
-        self.supervise_single = args['supervise_single'] if 'supervise_single' in args else False
         
-        # camera 分支网络
-        img_args = args['img_params']
-        self.grid_conf = img_args['grid_conf']   # 网格配置参数
-        self.data_aug_conf = img_args['data_aug_conf']   # 数据增强配置参数
-        self.downsample = img_args['img_downsample']  # 下采样倍数
-        self.bevC = img_args['bev_dim']  # 图像特征维度
-        # toggle using QuickCumsum vs. autograd
-        self.use_quickcumsum = True
+        self.type = 0
+        if 'multimodal' in args:
+            self.basebone = types_encoding.Multimodal(args)
+            self.type += 1
+        else:
+            self.basebone = None
         
-        # 用于投影到BEV视角的参数
-        dx, bx, nx = gen_dx_bx(self.grid_conf['xbound'], self.grid_conf['ybound'], self.grid_conf['zbound'],)  # 划分网格
-        self.dx = dx.clone().detach().requires_grad_(False).to(torch.device(self.device))  # [0.4,0.4,20]
-        self.bx = bx.clone().detach().requires_grad_(False).to(torch.device(self.device))  # [-49.8,-49.8,0]
-        self.nx = nx.clone().detach().requires_grad_(False).to(torch.device(self.device))  # [250,250,1]
-        self.frustum = self.create_frustum().clone().detach().requires_grad_(False).to(torch.device(self.device))  # frustum: DxfHxfWx3
-        self.D, _, _, _ = self.frustum.shape
-        print('total depth levels: ', self.D)
-        self.camencode = ImgCamEncode(self.D, self.bevC, self.downsample, self.grid_conf['ddiscr'], self.grid_conf['mode'], img_args['use_depth_gt'], img_args['depth_supervision'])
-        print("Number of parameter CamEncode: %d" % (sum([param.nelement() for param in self.camencode.parameters()])))
-        
-        # lidar 分支网络
-        pc_args = args['pc_params']
-        self.pillar_vfe = PillarVFE(pc_args['pillar_vfe'], num_point_features=4, voxel_size=pc_args['voxel_size'], point_cloud_range=pc_args['lidar_range'])
-        print("Number of parameter pillar_vfe: %d" % (sum([param.nelement() for param in self.pillar_vfe.parameters()])))
-        self.scatter = PointPillarScatter(pc_args['point_pillar_scatter'])
-        print("Number of parameter scatter: %d" % (sum([param.nelement() for param in self.scatter.parameters()])))
-        
-        # 双模态融合
-        modality_args = args['modality_fusion']
-        self.modal_multi_scale = modality_args['bev_backbone']['multi_scale']
-        self.num_levels = len(modality_args['bev_backbone']['layer_nums'])
-        assert img_args['bev_dim'] == pc_args['point_pillar_scatter']['num_features']
-        self.modal_conv = nn.Conv2d(img_args['bev_dim'] * 2, img_args['bev_dim'], kernel_size=1)
-        # self.modality_adapter = nn.Embedding(modality_args['num_modality'], img_args['bev_dim'])
-        # self.fusion = MultiModalFusion(modality_args['num_modality'], img_args['bev_dim'])
-        # self.fusion = MultiModalFusion_Mamba(modality_args['num_modality'], img_args['bev_dim'])
-        # print("Number of parameter modal fusion: %d" % (sum([param.nelement() for param in self.fusion.parameters()])))
-        self.backbone = ResNetBEVBackbone(modality_args['bev_backbone'], input_channels=pc_args['point_pillar_scatter']['num_features'])
-        print("Number of parameter bevbackbone: %d" % (sum([param.nelement() for param in self.backbone.parameters()])))
+        if 'pillar' in args:
+            self.pillar = types_encoding.PointPillar(args)
+            self.type += 1
+        else:
+            self.pillar = None
 
-        self.shrink_flag = False
-        if 'shrink_header' in modality_args:
-            self.shrink_flag = modality_args['shrink_header']['use']
-            self.shrink_conv = DownsampleConv(modality_args['shrink_header'])
-            print("Number of parameter shrink_conv: %d" % (sum([param.nelement() for param in self.shrink_conv.parameters()])))
+        if 'second' in args:
+            self.second = types_encoding.SECOND(args)
+            self.type += 1
+        else:
+            self.second = None
+
+        if self.type > 1:
+            assert 'feat_proj' in args
+            self.feat_proj = args['feat_proj'] if 'feat_proj' in args else False
+            print('feature proj: ', self.feat_proj)
+            if self.feat_proj:
+                assert 'proj_backbone_args' in args
+                for idx in range(self.type):
+                    setattr(self, f"a{idx}_proj", HEALResNetBEVBackbone(args['proj_backbone_args']))
+
+        # self.compression = args['compression'] > 0
+        # if self.compression:
+        #     self.compressor = NaiveCompressor(256, args['compression'])
+
+        # self.spatial_transform = SpatialTransformation(
+        #     args['spatial_transform'])
+
+        self.fusion_net = HeteroFusion(args['hetero_fusion'])
+
+        self.use_hetero_decoder = 'hetero_decoder' in args
+        if 'decoder' in args:
+            self.decoder = NaiveDecoder(args['decoder'])
+        if 'hetero_decoder' in args:
+            self.decoder = HeteroDecoder(args['hetero_decoder'])
+
+        self.cls_head = nn.Conv2d(256, args['anchor_number'], kernel_size=1)
+        self.reg_head = nn.Conv2d(256, 7 * args['anchor_number'], kernel_size=1)
+
+    def unpad_mode_encoding(self, mode, record_len):
+        B = mode.shape[0]
+        out = []
+        for i in range(B):
+            out.append(mode[i, :record_len[i]])
+        return torch.cat(out, dim=0)
+
+    def freeze_networks(self, net):
+        for p in net.parameters():
+            p.requires_grad = False
+    
+    def inference_freeze(self):
+        self.freeze_networks(self)
+
+    def update_model(self, fusion_net, decoder, cls_head, reg_head, dir_head, second_net=None, pillar_net=None, mm_net=None):
+        self.fusion_net = fusion_net
+        self.decoder = decoder
+        self.cls_head = cls_head
+        self.reg_head = reg_head
+        self.dir_head = dir_head
+
+        if second_net is not None:
+            self.second = second_net
+            self.freeze_networks(self.second)
+            print('second net freezed.')        
+        if pillar_net is not None:
+            self.pillar = pillar_net
+            self.freeze_networks(self.pillar)
+            print('pillar net freezed.')
+        if mm_net is not None:
+            self.basebone = mm_net
+            self.freeze_networks(self.basebone)
+            print('multimodal net freezed.')
+
+    def regroup(self, x, record_len, select_idx):
+        split_x = torch.tensor_split(x, torch.cumsum(record_len, dim=0)[:-1].cpu())
+        select_x, select_ego = [], []
+        for _x in split_x:
+            if _x.shape[0] < select_idx + 1:
+                select_x.append([])
+            else:
+                select_x.append(_x[select_idx:select_idx+1])
+            select_ego.append(_x[0:1])
+        return select_x, select_ego
         
-        self.fusion_net = HeteroFusion(args['collaborative_fusion'])
-
-        self.cls_head = nn.Conv2d(args['in_head'], args['anchor_number'], kernel_size=1)
-        self.reg_head = nn.Conv2d(args['in_head'], 7 * args['anchor_number'], kernel_size=1)
-        self.dir_head = nn.Conv2d(args['in_head'], args['dir_args']['num_bins'] * args['anchor_number'], kernel_size=1) # BIN_NUM = 2
-
 
     def forward(self, data_dict):
-        output_dict = {'pyramid': 'collab'}
-        # get two types data
-        image_inputs_dict = data_dict['image_inputs']
-        pc_inputs_dict = data_dict['processed_lidar']
+        output_dict = {}
         record_len = data_dict['record_len']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
+        rec_loss, svd_loss, bfp_loss = torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device), torch.tensor(0.0, requires_grad=True).to(record_len.device)
 
-        # process point cloud 单分支时的网络部分包含4部分，双分支只包含前两部分
-        #（1）PillarVFE              pcdet/models/backbones_3d/vfe/pillar_vfe.py   # 3D卷积, 点特征编码
-        #（2）PointPillarScatter     pcdet/models/backbones_2d/map_to_bev/pointpillar_scatter.py   # 2D卷积，创建（实际就是变形）一个大小为(C，H，W)的伪图像
-        #（3）BaseBEVBackbone        pcdet/models/backbones_2d/base_bev_backbone.py   # 2D卷积
-        #（4）AnchorHeadSingle       pcdet/models/dense_heads/anchor_head_single.py   # 检测头
-        batch_dict = {'voxel_features': pc_inputs_dict['voxel_features'],
-                      'voxel_coords': pc_inputs_dict['voxel_coords'],
-                      'voxel_num_points': pc_inputs_dict['voxel_num_points'],
-                      'record_len': record_len}
-        batch_dict = self.pillar_vfe(batch_dict)
-        batch_dict = self.scatter(batch_dict)
+        batch_dict = {
+                'voxel_features': data_dict['processed_lidar']['voxel_features'],
+                'voxel_coords': data_dict['processed_lidar']['voxel_coords'],
+                'voxel_num_points': data_dict['processed_lidar']['voxel_num_points'],
+                'image_inputs': data_dict['image_inputs'],
+                'batch_size': torch.sum(data_dict['record_len']).cpu().numpy(),
+                'record_len': record_len
+            }
+        features = []
+        origin_features = []
+        agent_idx = 0
 
-        # batch_dict = self.backbone(batch_dict)
+        if self.second is not None:
+            f = self.second(data_dict)
+
+            # homo, no action is needed
+            if self.type == 1:
+                batch_dict['spatial_features'] = f
+            
+            # only hetero
+            else:
+                print(f'second {agent_idx} type.')
+                if self.feat_proj:
+                    f = eval(f"self.a{agent_idx}_proj")({'spatial_features':f})['spatial_features_2d']
+                else:
+                    print('second no proj.')
+                # proj_features.append(f)
+
+                features, _ = self.regroup(f, record_len, select_idx=agent_idx)
+                agent_idx += 1
+
+
+
+        if self.pillar is not None:
+            f = self.pillar(batch_dict)
+
+            # homo
+            if self.type == 1:
+                batch_dict['spatial_features'] = f
+
+            # hetero
+            else:
+                print(f'pillar {agent_idx} type.')
+                if self.feat_proj:
+                    print('pillar proj.')
+                    # f = self.minmax_norm(f)
+                    f = eval(f"self.a{agent_idx}_proj")({'spatial_features':f})['spatial_features_2d']
+                else:
+                    print('pillar no proj.')
+                # proj_features.append(f)
+                
+                # when is the 1st agent, no operation is needed
+                # when is the 2nd agent
+                select_x, _ = self.regroup(f, record_len, select_idx=agent_idx)
+                if features:
+                    print(f'pillar not first coolaborate agent')
+                    for i in range(len(record_len)):
+                        if select_x[i] != []:
+                            features[i] = torch.cat([features[i], select_x[i]], dim=0)
+                    
+                    features = torch.cat(features, dim=0)
+                    batch_dict['spatial_features'] = features
+                
+                else:
+                    print('pillar first coolaborate agent')
+                    features = select_x
+
+                agent_idx += 1
         
-        
-        # process image to get bev
-        # x, rots, trans, intrins, post_rots, post_trans, depth_map = image_inputs_dict['imgs'], image_inputs_dict['rots'], image_inputs_dict['trans'], image_inputs_dict['intrins'], image_inputs_dict['post_rots'], image_inputs_dict['post_trans'], image_inputs_dict['depth_map']
-        # geom: ([8, 1, 48, 40, 60, 3]), x: torch.Size([8, 1, 48, 40, 60, 64])
-        # geom = self.get_geometry(rots, trans, intrins, post_rots, post_trans)  # 像素坐标到自车中坐标的映射关系 geom: B x N x D x H x W x 3
-        geom = self.get_geometry(image_inputs_dict)  # 像素坐标到自车中坐标的映射关系 geom: B x N x D x H x W x 3
-        # get_cam_feats, 提取图像特征并预测深度编码 x: B x N x D x fH x fW x C(4 x N x 42 x 16 x 22 x 64) Return B x N x D x H/downsample x W/downsample x C
-        x = image_inputs_dict['imgs']
 
-        x, spatial_features = x, batch_dict['spatial_features']
-        
-        B, N, C, imH, imW = x.shape     # torch.Size([4, 1, 3, 320, 480])
-        x = x.view(B*N, C, imH, imW)  # B和N两个维度合起来  x:  B: 4  N: 4  C: 3  imH: 256  imW: 352 -> 16 x 4 x 256 x 352
-        _, x = self.camencode(x)     # x: B*N x C x D x fH x fW(24 x 64 x 41 x 16 x 22) -> 多了一个维度D：代表深度
-        x = x.view(B, N, self.bevC, self.D, imH//self.downsample, imW//self.downsample)  #将前两维拆开 x: B x N x C x D x fH x fW(4 x 6 x 64 x 41 x 16 x 22)
-        x = x.permute(0, 1, 3, 4, 5, 2)  # x: B x N x D x fH x fW x C(4 x 6 x 41 x 16 x 22 x 64)
-        # 将图像转换到voxel
-        x = self.voxel_pooling(geom, x)  # x: 4 x 64 x 240 x 240
-        # 转换到BEV下, collapse Z
-        x = torch.cat(x.unbind(dim=2), 1)  # 消除掉z维
-        
+        if self.basebone is not None:
+            f, rec_loss, svd_loss = self.basebone(batch_dict, mode=mode, training=training)
 
-        """For feature transformation"""
-        self.H = (self.cav_range[4] - self.cav_range[1])
-        self.W = (self.cav_range[3] - self.cav_range[0])
-        self.fake_voxel_size = 1
-        affine_matrix = normalize_pairwise_tfm(data_dict['pairwise_t_matrix'], self.H, self.W, self.fake_voxel_size)
+            # homo, no action is needed
+            if self.type == 1:
+                batch_dict['spatial_features'] = f
 
-        # heter_feature_2d is downsampled 2x
-        # add croping information to collaboration module
-        
-        x = self.modal_conv(torch.cat([x, spatial_features], dim=1))
+            # only hetero
+            else:
+                print(f'multi-modal {agent_idx} type.')
+                if self.feat_proj:
+                    print('multi-modal proj.')
+                    # f = self.minmax_norm(f)
+                    f = eval(f"self.a{agent_idx}_proj")({'spatial_features':f})['spatial_features_2d']
+                else:
+                    print('multi-modal no proj.')
+                # proj_features.append(f)
+                
+                # when is the 1st agent, no operation is needed
+                # when is the 2nd agent
+                select_x, _ = self.regroup(f, record_len, select_idx=agent_idx)
+                if features:
+                    print('multi-modal not first coolaborate agent')
+                    for i in range(len(record_len)):
+                        if select_x[i] != []:
+                            features[i] = torch.cat([features[i], select_x[i]], dim=0)
+                    
+                    features = torch.cat(features, dim=0)
+                    batch_dict['spatial_features'] = features
 
-        x, mask = regroup(x, record_len, self.max_cav)
+                else:
+                    print('multi-modal first and last coolaborate agent')
+                    batch_dict['spatial_features'] = f
+                
+
+                agent_idx += 1
+
+
+        if self.type > 1:
+            # (B, L)
+            # mode = batch['mode'].to(torch.int)
+            mode = torch.Tensor([0, 1]).repeat(len(record_len), 1).to(torch.int).to(record_len.device)
+        else:
+            mode = torch.Tensor([0, 0]).repeat(len(record_len), 1).to(torch.int).to(record_len.device)
+
+        mode_unpack = self.unpad_mode_encoding(mode, record_len)
+
+        ### combine hetero features HAVE DONE
+        # camera_features = None
+        # lidar_features = None
+        # if not torch.all(mode_unpack == 1):
+        #     batch_camera = self.extract_camera_input(batch)
+        #     camera_features = self.camera_encoder(batch_camera)
+        # # If there is at least one lidar
+        # if not torch.all(mode_unpack == 0):
+        #     batch_lidar = self.extract_lidar_input(batch)
+        #     lidar_features = self.lidar_encoder(batch_lidar)
+        # x = self.combine_features(camera_features,
+        #                           lidar_features, mode_unpack,
+        #                           record_len)
+
+        # if self.compression:
+        #     x = self.compressor(x)
+
+        # N, C, H, W -> B,  L, C, H, W
+        x, mask = regroup(batch_dict['spatial_features'], record_len, self.max_cav)
         # B, L, C, H, W
-        x = self.fusion_net(x, pairwise_t_matrix, mode,
-                            record_len, mask).squeeze(1)
+        x = self.fusion_net(x, pairwise_t_matrix, mode, record_len, mask).squeeze(1)
 
-        if self.shrink_flag:
-            fused_feature = self.shrink_conv(fused_feature)
 
-        cls_preds = self.cls_head(fused_feature)
-        reg_preds = self.reg_head(fused_feature)
-        dir_preds = self.dir_head(fused_feature)
+        if self.use_hetero_decoder:
+            psm, rm = self.decoder(x.unsqueeze(1), mode, use_upsample=False)
+        else:
+            x = self.decoder(x.unsqueeze(1), use_upsample=False).squeeze(1)
+            psm = self.cls_head(x)
+            rm = self.reg_head(x)
+            
+        output_dict = {'psm': psm,
+                       'rm': rm}
 
-        output_dict.update({'cls_preds': cls_preds,
-                            'reg_preds': reg_preds,
-                            'dir_preds': dir_preds})
-
-        output_dict.update({'psm': cls_preds,
-                            'rm': reg_preds
-                            })
-        
-        output_dict.update({'occ_single_list': 
-                            occ_outputs})
+        output_dict.update({
+            'cls_preds': psm,
+            'reg_preds': rm,
+            'rec_loss': rec_loss,
+            'svd_loss': svd_loss,
+            'bfp_loss': bfp_loss,
+        })
 
         return output_dict
-
-    def get_geometry(self, image_inputs_dict):
-        """Determine the (x,y,z) locations (in the ego frame)
-        of the points in the point cloud.
-        Returns B x N x D x H/downsample x W/downsample x 3
-        """
-                # process image to get bev
-        rots, trans, intrins, post_rots, post_trans = image_inputs_dict['rots'], image_inputs_dict['trans'], image_inputs_dict['intrins'], image_inputs_dict['post_rots'], image_inputs_dict['post_trans']
-
-        B, N, _ = trans.shape  # B:4(batchsize)    N: 4(相机数目) DAIR数据集只有1个相机
-
-        # undo post-transformation
-        # B x N x D x H x W x 3
-        # 抵消数据增强及预处理对像素的变化
-        points = self.frustum - post_trans.view(B, N, 1, 1, 1, 3)
-        if post_rots.device != 'cpu':
-            inv_post_rots = torch.inverse(post_rots.to('cpu')).to(post_rots.device)
-        else:
-            inv_post_rots = torch.inverse(post_rots)
-        points = inv_post_rots.view(B, N, 1, 1, 1, 3, 3).matmul(points.unsqueeze(-1))
-
-        # cam_to_ego
-        points = torch.cat((points[:, :, :, :, :, :2] * points[:, :, :, :, :, 2:3],  # points[:, :, :, :, :, 2:3] ranges from [4, 45) meters
-                            points[:, :, :, :, :, 2:3]), 5)  # 将像素坐标(u,v,d)变成齐次坐标(du,dv,d)
-        # d[u,v,1]^T=intrins*rots^(-1)*([x,y,z]^T-trans)
-        #print(intrins.shape)
-        if intrins.device != 'cpu':
-            inv_intrins = torch.inverse(intrins.to('cpu')).to(intrins.device)
-        else:
-            inv_intrins = torch.inverse(intrins)
-        
-        combine = rots.matmul(inv_intrins)
-        points = combine.view(B, N, 1, 1, 1, 3, 3).matmul(points).squeeze(-1)
-        points += trans.view(B, N, 1, 1, 1, 3)  # 将像素坐标d[u,v,1]^T转换到车体坐标系下的[x,y,z]
-
-        return points  # B x N x D x H x W x 3 (4 x 1 x 41 x 16 x 22 x 3)
-
-    def voxel_pooling(self, geom_feats, x):
-        # geom_feats: B x N x D x H x W x 3 (4 x 6 x 41 x 16 x 22 x 3), D is discretization in "UD" or "LID"
-        # x: B x N x D x fH x fW x C(4 x 6 x 41 x 16 x 22 x 64), D is num_bins
-
-        B, N, D, H, W, C = x.shape  # B: 4  N: 6  D: 41  H: 16  W: 22  C: 64
-        Nprime = B*N*D*H*W  # Nprime
-
-        # flatten x
-        x = x.reshape(Nprime, C)  # 将图像展平，一共有 B*N*D*H*W 个点
-
-        # flatten indices
-
-        geom_feats = ((geom_feats - (self.bx - self.dx/2.)) / self.dx).long()  # 将[-48,48] [-10 10]的范围平移到 [0, 240), [0, 1) 计算栅格坐标并取整
-        geom_feats = geom_feats.view(Nprime, 3)  # 将像素映射关系同样展平  geom_feats: B*N*D*H*W x 3 
-        batch_ix = torch.cat([torch.full([Nprime//B, 1], ix, device=x.device, dtype=torch.long) for ix in range(B)])  # 每个点对应于哪个batch
-        geom_feats = torch.cat((geom_feats, batch_ix), 1)  # geom_feats: B*N*D*H*W x 4, geom_feats[:,3]表示batch_id
-
-        # filter out points that are outside box
-        # 过滤掉在边界线之外的点 x:0~240  y: 0~240  z: 0
-        kept = (geom_feats[:, 0] >= 0) & (geom_feats[:, 0] < self.nx[0])\
-            & (geom_feats[:, 1] >= 0) & (geom_feats[:, 1] < self.nx[1])\
-            & (geom_feats[:, 2] >= 0) & (geom_feats[:, 2] < self.nx[2])
-        
-        x = x[kept] 
-        geom_feats = geom_feats[kept]
-
-        # get tensors from the same voxel next to each other
-        ranks = geom_feats[:, 0] * (self.nx[1] * self.nx[2] * B)\
-            + geom_feats[:, 1] * (self.nx[2] * B)\
-            + geom_feats[:, 2] * B\
-            + geom_feats[:, 3]  # 给每一个点一个rank值，rank相等的点在同一个batch，并且在在同一个格子里面
-        sorts = ranks.argsort()
-        x, geom_feats, ranks = x[sorts], geom_feats[sorts], ranks[sorts]  # 按照rank排序，这样rank相近的点就在一起了
-        # x: 168648 x 64  geom_feats: 168648 x 4  ranks: 168648
-
-        # cumsum trick
-        if not self.use_quickcumsum:
-            x, geom_feats = cumsum_trick(x, geom_feats, ranks)
-        else:
-            x, geom_feats = QuickCumsum.apply(x, geom_feats, ranks)  # 一个batch的一个格子里只留一个点 x: 29072 x 64  geom_feats: 29072 x 4
-
-        # griddify (B x C x Z x X x Y)
-        # final = torch.zeros((B, C, self.nx[2], self.nx[0], self.nx[1]), device=x.device)  # final: 4 x 64 x Z x X x Y
-        # final[geom_feats[:, 3], :, geom_feats[:, 2], geom_feats[:, 0], geom_feats[:, 1]] = x  # 将x按照栅格坐标放到final中
-
-        # modify griddify (B x C x Z x Y x X) by Yifan Lu 2022.10.7
-        # ------> x
-        # |
-        # |
-        # y
-        final = torch.zeros((B, C, self.nx[2], self.nx[1], self.nx[0]), device=x.device)  # final: 4 x 64 x Z x Y x X
-        final[geom_feats[:, 3], :, geom_feats[:, 2], geom_feats[:, 1], geom_feats[:, 0]] = x  # 将x按照栅格坐标放到final中
-
-        # collapse Z
-        # collapsed_final = torch.cat(final.unbind(dim=2), 1)  # 消除掉z维
-
-        # return collapsed_final#, x  # final: 4 x 64 x 240 x 240  # B, C, H, W
-        return final
 
 
 def torch_tensor_to_numpy(torch_tensor):
