@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 import numpy as np
+import cv2
 
 import opencood.visualization.simple_plot3d.canvas_3d as canvas_3d
 import opencood.visualization.simple_plot3d.canvas_bev as canvas_bev
@@ -106,11 +107,13 @@ def visualize(pred_box_tensor, gt_tensor, pcd, pc_range, save_path, method='3d',
         else:
             raise(f"Not Completed for f{method} visualization.")
 
-        plt.axis("off")
+        # plt.axis("off")
 
-        plt.imshow(canvas.canvas)
+        # plt.imshow(canvas.canvas)
 
-        plt.tight_layout()
-        plt.savefig(save_path, transparent=False, dpi=400)
-        plt.clf()
+        # plt.tight_layout()
+        # plt.savefig(save_path, transparent=False, dpi=400)
+        # plt.clf()
+        output_img = cv2.cvtColor(canvas.canvas, cv2.COLOR_BGR2RGB)
+        cv2.imwrite(save_path, output_img)
         plt.close()

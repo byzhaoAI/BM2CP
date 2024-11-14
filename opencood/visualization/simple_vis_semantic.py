@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 
 
 classes = {
-        0: [0, 0, 0],  # None
+        0: [255, 255, 255],  # None
+        # 0: [0, 0, 0],  # None
         20: [70, 70, 70],  # Buildings
         2: [190, 153, 153],  # Fences
         3: [72, 0, 90],  # Other
@@ -56,20 +57,33 @@ def labels_to_palette(label):
     result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
     return result
 
-def visualize(pred, label, save_path):
+def visualize(pred, label, save_path, gt_save_path=None):
     img = labels_to_palette(pred)
     gt_img = labels_to_palette(label)
     
-    plt.subplot(1, 2, 1)
-    plt.imshow(img)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    cv2.imwrite(save_path, img)
+    
+    if gt_save_path is not None:
+        gt_img = cv2.cvtColor(gt_img, cv2.COLOR_BGR2RGB)
+        cv2.imwrite(gt_save_path, gt_img)
+    
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(img)
+    # plt.xticks([])  # 移除 x 轴刻度值
+    # plt.yticks([])  # 移除 y 轴刻度值
 
-    plt.subplot(1, 2, 2)
-    plt.imshow(gt_img)
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(gt_img)
+    # plt.xticks([])  # 移除 x 轴刻度值
+    # plt.yticks([])  # 移除 y 轴刻度值
 
-    plt.axis("off")
-    plt.tight_layout()
-    plt.savefig(save_path, transparent=True, dpi=400)
-    plt.close()
+    # plt.axis("off")
+    # plt.tight_layout()
+
+    # plt.savefig(save_path, dpi=400)
+    # plt.savefig(save_path, transparent=False, dpi=400)
+    # plt.close()
 
 
 def visualize_road(pred, label, save_path):
