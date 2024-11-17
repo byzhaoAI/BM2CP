@@ -21,7 +21,7 @@ from einops import rearrange
 import torchvision
 
 from opencood.models.vqm_modules.f1 import CoVQMF1
-from opencood.models.vqm_modules.encodings.second import SECOND
+from opencood.models.vqm_modules.encodings.second import SECOND as BaseSECOND
 
 
 class Multimodal(nn.Module):
@@ -83,7 +83,7 @@ class PointPillar(nn.Module):
 class SECOND(nn.Module):
     def __init__(self, args):
         super(SECOND, self).__init__()
-        self.second = SECOND(args['second'], device=args['device'])
+        self.second = BaseSECOND(args['second'], device=args['device'])
         self.backbone = BaseBEVBackbone(args['base_bev_backbone'], 64)
         if 'shrink_header' in args:
             self.shrink_flag = True
