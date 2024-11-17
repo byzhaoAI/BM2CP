@@ -688,9 +688,10 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         # remove points that hit itself
         lidar_np = pcd_utils.mask_ego_points(lidar_np)
 
+        projected_lidar = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
         # project the lidar to ego space
         if self.proj_first:
-            lidar_np[:, :3] = box_utils.project_points_by_matrix_torch(lidar_np[:, :3], transformation_matrix)
+            lidar_np[:, :3] = projected_lidar
         lidar_np = pcd_utils.mask_points_by_range(lidar_np, self.params['preprocess']['cav_lidar_range'])
         processed_lidar = self.pre_processor.preprocess(lidar_np)
 
@@ -702,7 +703,7 @@ class LiDARCameraIntermediateFusionDataset(torch.utils.data.Dataset):
         selected_cav_processed.update(
             {'object_bbx_center': object_bbx_center[object_bbx_mask == 1],
              'object_ids': object_ids,
-             'projected_lidar': lidar_np,
+             'projected_lidar': projected_lidar,
              'processed_features': processed_lidar,
              'velocity': velocity})
 
