@@ -47,9 +47,9 @@
 ## Quick Start
 #### Download dataset 
 ##### 1. OPV2V
-Download raw data of [OPV2V](https://drive.google.com/drive/folders/1dkDeHlwOVbmgXcDazZvO6TFEZ6V_7WUu) relseased by Official.
+Download raw data of [OPV2V](https://ucla.app.box.com/v/UCLA-MobilityLab-OPV2V) relseased by Official.
 ##### 2. DAIR-V2X
-1. Download raw data of [DAIR-V2X](https://thudair.baai.ac.cn/cooptest).
+1. Download raw data of [DAIR-V2X](https://drive.google.com/drive/folders/1gnrw5llXAIxuB9sEKKCm6xTaJ5HQAw2e).
 2. Download complemented annotation from [Yifan Lu](https://github.com/yifanlu0227/CoAlign).
 
 #### Install
