@@ -9,7 +9,7 @@ import bisect
 import numpy as np
 from matplotlib import cm
 
-from opencood.utils.opencda_carla import Transform
+# from opencood.utils.opencda_carla import Transform
 
 VIRIDIS = np.array(cm.get_cmap('viridis').colors)
 VID_RANGE = np.linspace(0.0, 1.0, VIRIDIS.shape[0])
