@@ -160,3 +160,6 @@ Thanks for the insightful previous works in cooperative perception field.
 
 **DAIR-V2X: A Large-Scale Dataset for Vehicle-Infrastructure Cooperative 3D Object Detection** *CVPR2022* [[Paper]](https://arxiv.org/abs/2204.05575) [[Website]](https://thudair.baai.ac.cn/index) [[Code]](https://github.com/AIR-THU/DAIR-V2X)
 
+### Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=byzhaoAI/BM2CP&type=date&legend=bottom-right)](https://www.star-history.com/#byzhaoAI/BM2CP&type=date&legend=bottom-right)
